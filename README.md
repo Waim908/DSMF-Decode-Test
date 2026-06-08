@@ -1,4 +1,4 @@
-# windows-video-decoder-test
+# 'DSMF-Decode-Test' is DirectShow MediaFoundation Decode Test
 
 通过windows api解码视频与音频。
 
