@@ -1,0 +1,215 @@
+/*
+ * DirectShow Video Decoder
+ * Uses IGraphBuilder + IMediaControl + IVideoWindow for playback.
+ */
+#include "directshow_decoder.h"
+
+#include <dshow.h>
+#include <stdio.h>
+
+static IGraphBuilder    *pGraph    = NULL;
+static IMediaControl    *pControl  = NULL;
+static IMediaEvent      *pEvent    = NULL;
+static IVideoWindow     *pVideo    = NULL;
+static IBasicVideo      *pBasicVideo = NULL;
+static IBasicAudio      *pAudio    = NULL;
+static IMediaSeeking    *pSeeking  = NULL;
+static int               g_playing = 0;
+static HWND              g_hwndDisplay = NULL;
+static int               g_video_w = 0;
+static int               g_video_h = 0;
+
+static void ds_update_aspect(void)
+{
+    if (!pVideo || !g_hwndDisplay) return;
+    RECT rc;
+    GetClientRect(g_hwndDisplay, &rc);
+    ds_resize(0, 0, rc.right, rc.bottom);
+}
+
+static void ds_cleanup(void)
+{
+    if (pVideo)      { IVideoWindow_put_Visible(pVideo, OAFALSE); IVideoWindow_put_Owner(pVideo, 0); IVideoWindow_Release(pVideo); pVideo = NULL; }
+    if (pBasicVideo)  { IBasicVideo_Release(pBasicVideo); pBasicVideo = NULL; }
+    if (pSeeking)     { IMediaSeeking_Release(pSeeking); pSeeking = NULL; }
+    if (pAudio)       { IBasicAudio_Release(pAudio); pAudio = NULL; }
+    if (pEvent)       { IMediaEvent_Release(pEvent); pEvent = NULL; }
+    if (pControl)     { IMediaControl_Release(pControl); pControl = NULL; }
+    if (pGraph)       { IGraphBuilder_Release(pGraph); pGraph = NULL; }
+    g_hwndDisplay = NULL;
+    g_video_w = 0;
+    g_video_h = 0;
+    g_playing = 0;
+}
+
+int ds_open(const wchar_t *filepath, HWND hwnd_display)
+{
+    HRESULT hr;
+    IBaseFilter *pSource = NULL;
+
+    ds_cleanup();
+
+    /* Create the Filter Graph Manager */
+    hr = CoCreateInstance(&CLSID_FilterGraph, NULL, CLSCTX_INPROC_SERVER,
+                          &IID_IGraphBuilder, (void **)&pGraph);
+    if (FAILED(hr)) { fprintf(stderr, "DirectShow: Failed to create FilterGraph: 0x%08lx\n", hr); return -1; }
+
+    /* Query interfaces */
+    IGraphBuilder_QueryInterface(pGraph, &IID_IMediaControl, (void **)&pControl);
+    IGraphBuilder_QueryInterface(pGraph, &IID_IMediaEvent,   (void **)&pEvent);
+    IGraphBuilder_QueryInterface(pGraph, &IID_IVideoWindow,  (void **)&pVideo);
+    IGraphBuilder_QueryInterface(pGraph, &IID_IBasicVideo,   (void **)&pBasicVideo);
+    IGraphBuilder_QueryInterface(pGraph, &IID_IBasicAudio,   (void **)&pAudio);
+    IGraphBuilder_QueryInterface(pGraph, &IID_IMediaSeeking, (void **)&pSeeking);
+
+    if (!pControl || !pVideo) {
+        fprintf(stderr, "DirectShow: Failed to query required interfaces\n");
+        ds_cleanup();
+        return -1;
+    }
+
+    /* Add source filter for the file */
+    hr = IGraphBuilder_AddSourceFilter(pGraph, filepath, L"Source", &pSource);
+    if (FAILED(hr)) {
+        fprintf(stderr, "DirectShow: Failed to add source filter for '%ls': 0x%08lx\n", filepath, hr);
+        ds_cleanup();
+        return -1;
+    }
+
+    /* Render all output pins (auto-connects decoder + renderer) */
+    hr = IGraphBuilder_RenderFile(pGraph, filepath, NULL);
+    if (FAILED(hr)) {
+        fprintf(stderr, "DirectShow: RenderFile failed: 0x%08lx\n", hr);
+        if (pSource) IBaseFilter_Release(pSource);
+        ds_cleanup();
+        return -1;
+    }
+
+    if (pSource) IBaseFilter_Release(pSource);
+
+    /* Embed video window into our display area */
+    if (hwnd_display && pVideo) {
+        g_hwndDisplay = hwnd_display;
+
+        IVideoWindow_put_Owner(pVideo, (OAHWND)hwnd_display);
+        IVideoWindow_put_WindowStyle(pVideo, WS_CHILD | WS_CLIPSIBLINGS | WS_CLIPCHILDREN);
+        IVideoWindow_put_MessageDrain(pVideo, (OAHWND)hwnd_display);
+        IVideoWindow_put_AutoShow(pVideo, OAFALSE);
+
+        /* Get native video size from IBasicVideo */
+        g_video_w = 0;
+        g_video_h = 0;
+        if (pBasicVideo) {
+            long vw = 0, vh = 0;
+            IBasicVideo_get_SourceWidth(pBasicVideo, &vw);
+            IBasicVideo_get_SourceHeight(pBasicVideo, &vh);
+            if (vw > 0 && vh > 0) {
+                g_video_w = vw;
+                g_video_h = vh;
+                fprintf(stdout, "DirectShow: Native video size %ldx%ld\n", vw, vh);
+            }
+        }
+
+        /* Fit video to display area with aspect ratio */
+        ds_update_aspect();
+        IVideoWindow_put_Visible(pVideo, OATRUE);
+    }
+
+    g_playing = 0;
+    return 0;
+}
+
+int ds_play(void)
+{
+    if (!pControl) return -1;
+    HRESULT hr = IMediaControl_Run(pControl);
+    if (SUCCEEDED(hr)) { g_playing = 1; return 0; }
+    fprintf(stderr, "DirectShow: Run failed: 0x%08lx\n", hr);
+    return -1;
+}
+
+void ds_stop(void)
+{
+    if (pControl) {
+        IMediaControl_Stop(pControl);
+    }
+    ds_cleanup();
+}
+
+int ds_is_playing(void)
+{
+    if (!pEvent || !g_playing) return 0;
+
+    /* Check for end-of-file event */
+    long evCode = 0;
+    LONG_PTR p1 = 0, p2 = 0;
+    while (IMediaEvent_GetEvent(pEvent, &evCode, &p1, &p2, 0) == S_OK) {
+        IMediaEvent_FreeEventParams(pEvent, evCode, p1, p2);
+        if (evCode == EC_COMPLETE || evCode == EC_ERRORABORT) {
+            g_playing = 0;
+            return 0;
+        }
+    }
+    return g_playing;
+}
+
+double ds_get_position(void)
+{
+    if (!pSeeking) return 0.0;
+    LONGLONG pos = 0;
+    IMediaSeeking_GetCurrentPosition(pSeeking, &pos);
+    return (double)pos / 10000000.0;  /* Convert 100-ns to seconds */
+}
+
+double ds_get_duration(void)
+{
+    if (!pSeeking) return 0.0;
+    LONGLONG dur = 0;
+    IMediaSeeking_GetDuration(pSeeking, &dur);
+    return (double)dur / 10000000.0;
+}
+
+void ds_set_volume(float vol)
+{
+    if (!pAudio) return;
+    /* IBasicAudio volume range: -10000 (silence) to 0 (full) */
+    long v = (long)((vol - 1.0f) * 10000.0f);
+    if (v < -10000) v = -10000;
+    if (v > 0) v = 0;
+    IBasicAudio_put_Volume(pAudio, v);
+}
+
+void ds_resize(int x, int y, int w, int h)
+{
+    if (!pVideo || w <= 0 || h <= 0) return;
+
+    if (g_video_w > 0 && g_video_h > 0) {
+        /* Aspect-ratio preserving letterbox */
+        float scale_x = (float)w / (float)g_video_w;
+        float scale_y = (float)h / (float)g_video_h;
+        float scale = (scale_x < scale_y) ? scale_x : scale_y;
+        int draw_w = (int)(g_video_w * scale);
+        int draw_h = (int)(g_video_h * scale);
+        int draw_x = x + (w - draw_w) / 2;
+        int draw_y = y + (h - draw_h) / 2;
+
+        /* Fill background black */
+        if (g_hwndDisplay) {
+            HDC hdc = GetDC(g_hwndDisplay);
+            if (hdc) {
+                RECT rc;
+                GetClientRect(g_hwndDisplay, &rc);
+                HBRUSH brush = CreateSolidBrush(RGB(0, 0, 0));
+                RECT full = {0, 0, rc.right, rc.bottom};
+                FillRect(hdc, &full, brush);
+                DeleteObject(brush);
+                ReleaseDC(g_hwndDisplay, hdc);
+            }
+        }
+
+        IVideoWindow_SetWindowPosition(pVideo, draw_x, draw_y, draw_w, draw_h);
+    } else {
+        /* No native size info, fill window */
+        IVideoWindow_SetWindowPosition(pVideo, x, y, w, h);
+    }
+}

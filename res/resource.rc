@@ -1,0 +1,5 @@
+#include <windows.h>
+#include "resource.h"
+
+/* Application manifest for visual styles */
+1 RT_MANIFEST "Application.manifest"

@@ -1,0 +1,5 @@
+/obj
+*.exe
+/medfound  
+/media-foundation
+/DirectShow

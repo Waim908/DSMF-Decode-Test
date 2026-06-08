@@ -1,0 +1,633 @@
+/*
+ * Media Foundation Video Decoder (IMFSourceReader)
+ * Proper frame timing, efficient rendering, A/V sync.
+ */
+#include "mf_decoder.h"
+
+#include <windows.h>
+#include <mmsystem.h>
+#include <mfapi.h>
+#include <mfidl.h>
+#include <mfreadwrite.h>
+#include <mfobjects.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+static IMFSourceReader     *g_reader     = NULL;
+static HWND                 g_hwnd       = NULL;
+static int                  g_active     = 0;
+static int                  g_dxva2      = 0;
+static int                  g_eof        = 0;
+static int                  g_width      = 0;
+static int                  g_height     = 0;
+static int                  g_stride     = 0;
+static long long            g_duration   = 0;
+static GUID                 g_subtype    = {0};
+
+/* Frame timing */
+static LONGLONG             g_startTime  = 0;  /* QPC start time */
+static LONGLONG             g_freq       = 0;  /* QPC frequency */
+static LONGLONG             g_firstPts   = 0;  /* First frame PTS */
+static int                  g_frameCount = 0;
+static int                  g_droppedFrames = 0;
+
+/* Audio playback */
+static HWAVEOUT            g_hWaveOut    = NULL;
+#define AUDIO_BUFFERS 16
+#define AUDIO_BUFFER_SIZE 65536
+static WAVEHDR             g_audioHdr[AUDIO_BUFFERS];
+static BYTE               *g_audioBuf[AUDIO_BUFFERS] = {0};
+static int                 g_audioBufIdx = 0;
+static HANDLE              g_hAudioThread = NULL;
+static volatile int        g_audioThreadStop = 0;
+
+/* Precomputed YUV→RGB tables */
+static int g_ytable[256];
+static int g_rvtable[256];
+static int g_guvtable[256];
+static int g_butable[256];
+static int g_tables_init = 0;
+
+static void init_yuv_tables(void)
+{
+    int i;
+    if (g_tables_init) return;
+    for (i = 0; i < 256; i++) {
+        g_ytable[i]   = (int)((i - 16) * 1.164);
+        g_rvtable[i]  = (int)((i - 128) * 1.596);
+        g_guvtable[i] = (int)((i - 128) * 0.813);
+        g_butable[i]  = (int)((i - 128) * 2.018);
+    }
+    g_tables_init = 1;
+}
+
+static __inline unsigned char clamp255(int v)
+{
+    if (v < 0) return 0;
+    if (v > 255) return 255;
+    return (unsigned char)v;
+}
+
+static void mf_cleanup_internals(void)
+{
+    int i;
+
+    /* Stop audio thread first */
+    if (g_hAudioThread) {
+        g_audioThreadStop = 1;
+        WaitForSingleObject(g_hAudioThread, 3000);
+        CloseHandle(g_hAudioThread);
+        g_hAudioThread = NULL;
+    }
+
+    if (g_reader)    { IMFSourceReader_Release(g_reader); g_reader = NULL; }
+
+    if (g_hWaveOut) {
+        waveOutReset(g_hWaveOut);
+        for (i = 0; i < AUDIO_BUFFERS; i++) {
+            if (g_audioBuf[i]) {
+                if (g_audioHdr[i].dwFlags & WHDR_PREPARED)
+                    waveOutUnprepareHeader(g_hWaveOut, &g_audioHdr[i], sizeof(WAVEHDR));
+                free(g_audioBuf[i]);
+                g_audioBuf[i] = NULL;
+            }
+        }
+        waveOutClose(g_hWaveOut);
+        g_hWaveOut = NULL;
+    }
+
+    g_audioBufIdx = 0;
+    g_audioThreadStop = 0;
+
+    g_active = 0;
+    g_eof    = 0;
+    g_dxva2  = 0;
+    g_width  = 0;
+    g_height = 0;
+    g_stride = 0;
+    g_startTime = 0;
+    g_firstPts  = 0;
+    g_frameCount = 0;
+    g_droppedFrames = 0;
+}
+
+static int mf_init_audio(int channels, int sample_rate, int bits_per_sample)
+{
+    WAVEFORMATEX wfx;
+    MMRESULT mr;
+    int i;
+
+    ZeroMemory(&wfx, sizeof(wfx));
+    wfx.wFormatTag      = WAVE_FORMAT_PCM;
+    wfx.nChannels       = channels;
+    wfx.nSamplesPerSec  = sample_rate;
+    wfx.wBitsPerSample  = bits_per_sample;
+    wfx.nBlockAlign     = channels * (bits_per_sample / 8);
+    wfx.nAvgBytesPerSec = sample_rate * wfx.nBlockAlign;
+
+    mr = waveOutOpen(&g_hWaveOut, WAVE_MAPPER, &wfx, 0, 0, CALLBACK_NULL);
+    if (mr != MMSYSERR_NOERROR) {
+        fprintf(stderr, "MF Audio: waveOutOpen failed: %d\n", (int)mr);
+        return -1;
+    }
+
+    waveOutSetVolume(g_hWaveOut, 0xFFFFFFFF);
+
+    for (i = 0; i < AUDIO_BUFFERS; i++) {
+        g_audioBuf[i] = (BYTE *)malloc(AUDIO_BUFFER_SIZE);
+        ZeroMemory(&g_audioHdr[i], sizeof(WAVEHDR));
+        g_audioHdr[i].lpData = (LPSTR)g_audioBuf[i];
+        g_audioHdr[i].dwBufferLength = AUDIO_BUFFER_SIZE;
+    }
+
+    g_audioBufIdx = 0;
+    g_audioThreadStop = 0;
+
+    fprintf(stdout, "MF Audio: %dHz %dch %dbit, %d buffers x %d bytes\n",
+            sample_rate, channels, bits_per_sample, AUDIO_BUFFERS, AUDIO_BUFFER_SIZE);
+    return 0;
+}
+
+/* Audio thread: continuously reads audio from source and feeds waveOut */
+static DWORD WINAPI mf_audio_thread(LPVOID param)
+{
+    (void)param;
+    fprintf(stdout, "MF Audio: thread started\n");
+
+    while (!g_audioThreadStop && g_reader && g_active) {
+        IMFMediaBuffer *abuf = NULL;
+        IMFSample      *asample = NULL;
+        BYTE           *adata = NULL;
+        DWORD           aflags = 0;
+        LONGLONG        ats = 0;
+        DWORD           astream_idx;
+        DWORD           abuf_len = 0;
+        HRESULT         hr;
+        WAVEHDR        *hdr;
+
+        /* Check if we have a free buffer */
+        hdr = &g_audioHdr[g_audioBufIdx];
+        if (hdr->dwFlags & WHDR_INQUEUE) {
+            /* All buffers busy, wait a bit */
+            Sleep(5);
+            continue;
+        }
+
+        /* Read audio sample */
+        hr = IMFSourceReader_ReadSample(g_reader,
+            (DWORD)MF_SOURCE_READER_FIRST_AUDIO_STREAM,
+            0, &astream_idx, &aflags, &ats, &asample);
+
+        if (FAILED(hr) || !asample || (aflags & MF_SOURCE_READERF_ENDOFSTREAM)) {
+            if (asample) IMFSample_Release(asample);
+            break;
+        }
+
+        hr = IMFSample_ConvertToContiguousBuffer(asample, &abuf);
+        if (SUCCEEDED(hr)) {
+            hr = IMFMediaBuffer_Lock(abuf, &adata, &abuf_len, NULL);
+            if (SUCCEEDED(hr)) {
+                /* Submit audio data to waveOut */
+                if (hdr->dwFlags & WHDR_PREPARED)
+                    waveOutUnprepareHeader(g_hWaveOut, hdr, sizeof(WAVEHDR));
+
+                /* Copy in chunks if needed */
+                DWORD offset = 0;
+                while (offset < abuf_len && !g_audioThreadStop) {
+                    DWORD chunk = abuf_len - offset;
+                    if (chunk > AUDIO_BUFFER_SIZE) chunk = AUDIO_BUFFER_SIZE;
+
+                    hdr = &g_audioHdr[g_audioBufIdx];
+                    /* Wait for this specific buffer to become free */
+                    while ((hdr->dwFlags & WHDR_INQUEUE) && !g_audioThreadStop) {
+                        Sleep(2);
+                    }
+                    if (g_audioThreadStop) break;
+
+                    if (hdr->dwFlags & WHDR_PREPARED)
+                        waveOutUnprepareHeader(g_hWaveOut, hdr, sizeof(WAVEHDR));
+
+                    memcpy(g_audioBuf[g_audioBufIdx], adata + offset, chunk);
+                    hdr->dwBufferLength = chunk;
+                    hdr->dwFlags = 0;
+
+                    if (waveOutPrepareHeader(g_hWaveOut, hdr, sizeof(WAVEHDR)) == MMSYSERR_NOERROR)
+                        waveOutWrite(g_hWaveOut, hdr, sizeof(WAVEHDR));
+
+                    g_audioBufIdx = (g_audioBufIdx + 1) % AUDIO_BUFFERS;
+                    offset += chunk;
+                }
+
+                IMFMediaBuffer_Unlock(abuf);
+            }
+            IMFMediaBuffer_Release(abuf);
+        }
+        IMFSample_Release(asample);
+    }
+
+    fprintf(stdout, "MF Audio: thread exited\n");
+    return 0;
+}
+
+static int mf_get_stride(IMFMediaType *type, int width)
+{
+    UINT32 stride = 0;
+    GUID subtype;
+
+    if (SUCCEEDED(IMFMediaType_GetUINT32(type, &MF_MT_DEFAULT_STRIDE, &stride)) && (int)stride != 0)
+        return (int)stride;
+
+    if (SUCCEEDED(IMFMediaType_GetGUID(type, &MF_MT_SUBTYPE, &subtype))) {
+        if (IsEqualGUID(&subtype, &MFVideoFormat_NV12)) return width;
+        if (IsEqualGUID(&subtype, &MFVideoFormat_YUY2)) return width * 2;
+        if (IsEqualGUID(&subtype, &MFVideoFormat_RGB32)) return width * 4;
+    }
+    return width;
+}
+
+int mf_open(const wchar_t *filepath, HWND hwnd_display, int enable_dxva2)
+{
+    HRESULT hr;
+    IMFAttributes *attrs = NULL;
+    IMFMediaType  *vtype = NULL;
+    IMFMediaType  *atype = NULL;
+    PROPVARIANT var;
+    UINT32 channels = 0, samplerate = 0, bitspersample = 0;
+    LARGE_INTEGER freq;
+
+    mf_cleanup_internals();
+    init_yuv_tables();
+
+    /* Get QPC frequency */
+    QueryPerformanceFrequency(&freq);
+    g_freq = freq.QuadPart;
+
+    hr = MFStartup(MF_VERSION, 0);
+    if (FAILED(hr)) { fprintf(stderr, "MF: MFStartup failed: 0x%08lx\n", hr); return -1; }
+
+    g_hwnd  = hwnd_display;
+    g_dxva2 = enable_dxva2;
+
+    hr = MFCreateAttributes(&attrs, 2);
+    if (FAILED(hr)) { MFShutdown(); return -1; }
+
+    IMFAttributes_SetUINT32(attrs, &MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, TRUE);
+
+    hr = MFCreateSourceReaderFromURL(filepath, attrs, &g_reader);
+    if (attrs) IMFAttributes_Release(attrs);
+    if (FAILED(hr)) { fprintf(stderr, "MF: MFCreateSourceReaderFromURL failed: 0x%08lx\n", hr); MFShutdown(); return -1; }
+
+    /* Configure video: try NV12, then YUY2, then RGB32 */
+    hr = MFCreateMediaType(&vtype);
+    if (SUCCEEDED(hr)) {
+        IMFMediaType_SetGUID(vtype, &MF_MT_MAJOR_TYPE, &MFMediaType_Video);
+        IMFMediaType_SetGUID(vtype, &MF_MT_SUBTYPE, &MFVideoFormat_NV12);
+        hr = IMFSourceReader_SetCurrentMediaType(g_reader, (DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, NULL, vtype);
+        IMFMediaType_Release(vtype); vtype = NULL;
+    }
+    if (FAILED(hr)) {
+        hr = MFCreateMediaType(&vtype);
+        if (SUCCEEDED(hr)) {
+            IMFMediaType_SetGUID(vtype, &MF_MT_MAJOR_TYPE, &MFMediaType_Video);
+            IMFMediaType_SetGUID(vtype, &MF_MT_SUBTYPE, &MFVideoFormat_YUY2);
+            hr = IMFSourceReader_SetCurrentMediaType(g_reader, (DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, NULL, vtype);
+            IMFMediaType_Release(vtype); vtype = NULL;
+        }
+    }
+    if (FAILED(hr)) {
+        hr = MFCreateMediaType(&vtype);
+        if (SUCCEEDED(hr)) {
+            IMFMediaType_SetGUID(vtype, &MF_MT_MAJOR_TYPE, &MFMediaType_Video);
+            IMFMediaType_SetGUID(vtype, &MF_MT_SUBTYPE, &MFVideoFormat_RGB32);
+            hr = IMFSourceReader_SetCurrentMediaType(g_reader, (DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, NULL, vtype);
+            IMFMediaType_Release(vtype); vtype = NULL;
+        }
+    }
+
+    /* Get video info */
+    hr = IMFSourceReader_GetCurrentMediaType(g_reader, (DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, &vtype);
+    if (SUCCEEDED(hr)) {
+        UINT64 frameSize = 0;
+        IMFMediaType_GetUINT64(vtype, &MF_MT_FRAME_SIZE, &frameSize);
+        g_width  = (int)(frameSize >> 32);
+        g_height = (int)(frameSize & 0xFFFFFFFF);
+        IMFMediaType_GetGUID(vtype, &MF_MT_SUBTYPE, &g_subtype);
+        g_stride = mf_get_stride(vtype, g_width);
+        IMFMediaType_Release(vtype); vtype = NULL;
+        fprintf(stdout, "MF: Video %dx%d stride=%d\n", g_width, g_height, g_stride);
+    }
+
+    /* Configure audio */
+    hr = MFCreateMediaType(&atype);
+    if (SUCCEEDED(hr)) {
+        IMFMediaType_SetGUID(atype, &MF_MT_MAJOR_TYPE, &MFMediaType_Audio);
+        IMFMediaType_SetGUID(atype, &MF_MT_SUBTYPE, &MFAudioFormat_PCM);
+        hr = IMFSourceReader_SetCurrentMediaType(g_reader, (DWORD)MF_SOURCE_READER_FIRST_AUDIO_STREAM, NULL, atype);
+        IMFMediaType_Release(atype); atype = NULL;
+    }
+    hr = IMFSourceReader_GetCurrentMediaType(g_reader, (DWORD)MF_SOURCE_READER_FIRST_AUDIO_STREAM, &atype);
+    if (SUCCEEDED(hr)) {
+        IMFMediaType_GetUINT32(atype, &MF_MT_AUDIO_NUM_CHANNELS, &channels);
+        IMFMediaType_GetUINT32(atype, &MF_MT_AUDIO_SAMPLES_PER_SECOND, &samplerate);
+        IMFMediaType_GetUINT32(atype, &MF_MT_AUDIO_BITS_PER_SAMPLE, &bitspersample);
+        IMFMediaType_Release(atype); atype = NULL;
+        if (channels > 0 && samplerate > 0 && bitspersample > 0)
+            mf_init_audio(channels, samplerate, bitspersample);
+    }
+
+    /* Get duration */
+    PropVariantInit(&var);
+    hr = IMFSourceReader_GetPresentationAttribute(g_reader, (DWORD)MF_SOURCE_READER_MEDIASOURCE, &MF_PD_DURATION, &var);
+    if (SUCCEEDED(hr) && var.vt == VT_UI8) g_duration = (long long)var.uhVal.QuadPart;
+    PropVariantClear(&var);
+
+    /* Initialize start time */
+    {
+        LARGE_INTEGER now;
+        QueryPerformanceCounter(&now);
+        g_startTime = now.QuadPart;
+        g_firstPts  = -1;
+    }
+
+    g_active = 1;
+    g_eof    = 0;
+
+    /* Start audio thread */
+    if (g_hWaveOut) {
+        g_hAudioThread = CreateThread(NULL, 0, mf_audio_thread, NULL, 0, NULL);
+        if (!g_hAudioThread) {
+            fprintf(stderr, "MF: Failed to create audio thread\n");
+        }
+    }
+
+    return 0;
+}
+
+/* Convert NV12 to 32-bit RGB in a destination buffer (pre-allocated) */
+static void nv12_to_rgb32(BYTE *dst, int dst_stride, BYTE *src, int src_stride,
+                          int width, int height, int draw_w, int draw_h)
+{
+    int dy, dx;
+    BYTE *y_plane = src;
+    BYTE *uv_plane = src + src_stride * height;
+
+    for (dy = 0; dy < draw_h; dy++) {
+        int src_y = dy * height / draw_h;
+        if (src_y >= height) src_y = height - 1;
+        BYTE *dst_row = dst + dy * dst_stride;
+
+        for (dx = 0; dx < draw_w; dx++) {
+            int src_x = dx * width / draw_w;
+            int y_val, cb, cr;
+            int r, g, b;
+            unsigned char *pixel;
+
+            if (src_x >= width) src_x = width - 1;
+
+            y_val = g_ytable[y_plane[src_y * src_stride + src_x]];
+
+            {
+                int uv_y = (src_y >> 1) * src_stride;
+                int uv_x = (src_x >> 1) << 1;
+                cb = uv_plane[uv_y + uv_x];
+                cr = uv_plane[uv_y + uv_x + 1];
+            }
+
+            r = y_val + g_rvtable[cr];
+            g = y_val - g_guvtable[cb] - (int)((cr - 128) * 0.391);
+            b = y_val + g_butable[cb];
+
+            pixel = &dst_row[dx * 4];
+            pixel[0] = clamp255(b);
+            pixel[1] = clamp255(g);
+            pixel[2] = clamp255(r);
+            pixel[3] = 255;
+        }
+    }
+}
+
+/* Convert YUY2 to 32-bit RGB */
+static void yuy2_to_rgb32(BYTE *dst, int dst_stride, BYTE *src, int src_stride,
+                          int width, int height, int draw_w, int draw_h)
+{
+    int dy, dx;
+    for (dy = 0; dy < draw_h; dy++) {
+        int src_y = dy * height / draw_h;
+        if (src_y >= height) src_y = height - 1;
+        BYTE *dst_row = dst + dy * dst_stride;
+
+        for (dx = 0; dx < draw_w; dx++) {
+            int src_x = dx * width / draw_w;
+            int y_val, cb, cr;
+            int r, g, b;
+            unsigned char *pixel;
+            if (src_x >= width) src_x = width - 1;
+
+            {
+                BYTE *s = src + src_y * src_stride + (src_x >> 1) * 4;
+                y_val = (src_x & 1) ? g_ytable[s[2]] : g_ytable[s[0]];
+                cb = s[1];
+                cr = s[3];
+            }
+            r = y_val + g_rvtable[cr];
+            g = y_val - g_guvtable[cb] - (int)((cr - 128) * 0.391);
+            b = y_val + g_butable[cb];
+
+            pixel = &dst_row[dx * 4];
+            pixel[0] = clamp255(b);
+            pixel[1] = clamp255(g);
+            pixel[2] = clamp255(r);
+            pixel[3] = 255;
+        }
+    }
+}
+
+/* Render frame with double buffering */
+static void mf_render_frame(BYTE *data, int stride, int width, int height, HWND hwnd)
+{
+    HDC hdc, memDC;
+    HBITMAP memBM, oldBM;
+    RECT rc;
+    int display_w, display_h;
+    int draw_x, draw_y, draw_w, draw_h;
+    float scale_x, scale_y, scale;
+    BITMAPINFO bi;
+    void *bits = NULL;
+
+    if (!hwnd) return;
+
+    hdc = GetDC(hwnd);
+    if (!hdc) return;
+
+    GetClientRect(hwnd, &rc);
+    display_w = rc.right;
+    display_h = rc.bottom;
+    if (display_w <= 0 || display_h <= 0) { ReleaseDC(hwnd, hdc); return; }
+
+    /* Aspect ratio */
+    scale_x = (float)display_w / (float)width;
+    scale_y = (float)display_h / (float)height;
+    scale = (scale_x < scale_y) ? scale_x : scale_y;
+    draw_w = (int)(width * scale);
+    draw_h = (int)(height * scale);
+    if (draw_w < 1) draw_w = 1;
+    if (draw_h < 1) draw_h = 1;
+    draw_x = (display_w - draw_w) / 2;
+    draw_y = (display_h - draw_h) / 2;
+
+    /* Create DIB */
+    memDC = CreateCompatibleDC(hdc);
+    ZeroMemory(&bi, sizeof(bi));
+    bi.bmiHeader.biSize        = sizeof(bi.bmiHeader);
+    bi.bmiHeader.biWidth       = draw_w;
+    bi.bmiHeader.biHeight      = -draw_h;
+    bi.bmiHeader.biPlanes      = 1;
+    bi.bmiHeader.biBitCount    = 32;
+    bi.bmiHeader.biCompression = BI_RGB;
+
+    memBM = CreateDIBSection(hdc, &bi, DIB_RGB_COLORS, &bits, NULL, 0);
+    if (!memBM || !bits) { DeleteDC(memDC); ReleaseDC(hwnd, hdc); return; }
+    oldBM = (HBITMAP)SelectObject(memDC, memBM);
+
+    /* Fill black */
+    {
+        RECT full = {0, 0, draw_w, draw_h};
+        HBRUSH brush = CreateSolidBrush(RGB(0, 0, 0));
+        FillRect(memDC, &full, brush);
+        DeleteObject(brush);
+    }
+
+    /* Convert to RGB */
+    if (IsEqualGUID(&g_subtype, &MFVideoFormat_NV12)) {
+        nv12_to_rgb32((BYTE *)bits, draw_w * 4, data, stride, width, height, draw_w, draw_h);
+    } else if (IsEqualGUID(&g_subtype, &MFVideoFormat_YUY2)) {
+        yuy2_to_rgb32((BYTE *)bits, draw_w * 4, data, stride, width, height, draw_w, draw_h);
+    } else if (IsEqualGUID(&g_subtype, &MFVideoFormat_RGB32) ||
+               IsEqualGUID(&g_subtype, &MFVideoFormat_ARGB32)) {
+        /* Direct copy with scaling */
+        int y;
+        for (y = 0; y < draw_h; y++) {
+            int src_y = y * height / draw_h;
+            if (src_y >= height) src_y = height - 1;
+            BYTE *dst_row = (BYTE *)bits + y * draw_w * 4;
+            BYTE *src_row = data + src_y * stride;
+            int x;
+            for (x = 0; x < draw_w; x++) {
+                int src_x = x * width / draw_w;
+                if (src_x >= width) src_x = width - 1;
+                memcpy(dst_row + x * 4, src_row + src_x * 4, 4);
+            }
+        }
+    }
+
+    BitBlt(hdc, draw_x, draw_y, draw_w, draw_h, memDC, 0, 0, SRCCOPY);
+
+    SelectObject(memDC, oldBM);
+    DeleteObject(memBM);
+    DeleteDC(memDC);
+    ReleaseDC(hwnd, hdc);
+}
+
+int mf_render_next_frame(void)
+{
+    IMFMediaBuffer *buffer = NULL;
+    IMFSample      *sample = NULL;
+    BYTE           *data   = NULL;
+    DWORD           flags  = 0;
+    LONGLONG        ts     = 0;
+    HRESULT         hr;
+    DWORD           stream_idx;
+    DWORD           buf_len = 0;
+    LONGLONG        pts_relative;
+    LONGLONG        wait_ns;
+    int             drop_count = 0;
+    const int       MAX_DROP = 10;
+    LARGE_INTEGER   now;
+    LONGLONG        elapsed_100ns;
+
+    if (!g_reader || !g_active) return -1;
+
+    /* Read video sample with drop-late-frame loop */
+    for (;;) {
+        hr = IMFSourceReader_ReadSample(g_reader,
+            (DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM,
+            0, &stream_idx, &flags, &ts, &sample);
+
+        if (FAILED(hr)) { fprintf(stderr, "MF: ReadSample failed: 0x%08lx\n", hr); return -1; }
+
+        if (flags & MF_SOURCE_READERF_ENDOFSTREAM) {
+            g_eof = 1;
+            fprintf(stdout, "MF: EOF, rendered %d frames, dropped %d\n", g_frameCount, g_droppedFrames);
+            return 1;
+        }
+        if (flags & MF_SOURCE_READERF_STREAMTICK) return 0;
+        if (!sample) return 0;
+
+        if (g_firstPts < 0) g_firstPts = ts;
+
+        pts_relative = ts - g_firstPts;
+        QueryPerformanceCounter(&now);
+        elapsed_100ns = ((now.QuadPart - g_startTime) * 10000000LL) / g_freq;
+        wait_ns = pts_relative - elapsed_100ns;
+
+        /* If frame is more than 33ms late and we haven't dropped too many, skip it */
+        if (wait_ns < -330000 && drop_count < MAX_DROP) {
+            g_droppedFrames++;
+            drop_count++;
+            IMFSample_Release(sample);
+            sample = NULL;
+            continue;
+        }
+
+        break;  /* Frame is on time or we've dropped enough */
+    }
+
+    /* If frame is early, wait */
+    if (wait_ns > 10000) {
+        DWORD wait_ms = (DWORD)(wait_ns / 10000);
+        if (wait_ms > 500) wait_ms = 500;  /* Cap at 500ms */
+        timeBeginPeriod(1);
+        Sleep(wait_ms);
+        timeEndPeriod(1);
+    }
+
+    /* Get buffer and render */
+    hr = IMFSample_ConvertToContiguousBuffer(sample, &buffer);
+    if (FAILED(hr)) { IMFSample_Release(sample); return -1; }
+
+    hr = IMFMediaBuffer_Lock(buffer, &data, &buf_len, NULL);
+    if (FAILED(hr)) { IMFMediaBuffer_Release(buffer); IMFSample_Release(sample); return -1; }
+
+    mf_render_frame(data, g_stride, g_width, g_height, g_hwnd);
+    g_frameCount++;
+
+    IMFMediaBuffer_Unlock(buffer);
+    IMFMediaBuffer_Release(buffer);
+    IMFSample_Release(sample);
+
+    return 0;
+}
+
+void mf_stop(void)
+{
+    mf_cleanup_internals();
+    MFShutdown();
+}
+
+int mf_is_active(void) { return (g_active && !g_eof) ? 1 : 0; }
+long long mf_get_position(void) { return 0; }
+long long mf_get_duration(void) { return g_duration; }
+int mf_is_using_dxva2(void) { return g_dxva2; }
+
+const wchar_t *mf_get_decoder_info(void)
+{
+    static wchar_t info[256];
+    if (g_active) {
+        swprintf(info, 256, L"Media Foundation %dx%d (dropped %d/%d)",
+                 g_width, g_height, g_droppedFrames, g_frameCount);
+    } else {
+        swprintf(info, 256, L"Media Foundation: Not active");
+    }
+    return info;
+}
