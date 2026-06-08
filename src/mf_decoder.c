@@ -3,6 +3,7 @@
  * Proper frame timing, efficient rendering, A/V sync.
  */
 #include "mf_decoder.h"
+#include "dxva2_helper.h"
 
 #include <windows.h>
 #include <mmsystem.h>
@@ -10,9 +11,16 @@
 #include <mfidl.h>
 #include <mfreadwrite.h>
 #include <mfobjects.h>
+#include <d3d9.h>
+#include <dxva2api.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+/* D3DFMT_NV12 may not be available in MinGW */
+#ifndef D3DFMT_NV12
+#define D3DFMT_NV12 ((D3DFORMAT)MAKEFOURCC('N','V','1','2'))
+#endif
 
 static IMFSourceReader     *g_reader     = NULL;
 static HWND                 g_hwnd       = NULL;
@@ -24,6 +32,11 @@ static int                  g_height     = 0;
 static int                  g_stride     = 0;
 static long long            g_duration   = 0;
 static GUID                 g_subtype    = {0};
+
+/* DXVA2 hardware acceleration state */
+static int                  g_dxva2_initialized = 0;
+static IDirect3DSurface9   *g_dxva2_surface     = NULL;
+static int                  g_dxva2_use_hw_render = 0;
 
 /* Frame timing */
 static LONGLONG             g_startTime  = 0;  /* QPC start time */
@@ -99,6 +112,18 @@ static void mf_cleanup_internals(void)
 
     g_audioBufIdx = 0;
     g_audioThreadStop = 0;
+
+    /* Cleanup DXVA2 resources */
+    if (g_dxva2_surface) {
+        IDirect3DSurface9_Release(g_dxva2_surface);
+        g_dxva2_surface = NULL;
+    }
+    if (g_dxva2_initialized) {
+        dxva2_decoder_cleanup();
+        dxva2_processor_cleanup();
+        g_dxva2_initialized = 0;
+    }
+    g_dxva2_use_hw_render = 0;
 
     g_active = 0;
     g_eof    = 0;
@@ -316,6 +341,40 @@ int mf_open(const wchar_t *filepath, HWND hwnd_display, int enable_dxva2)
         g_stride = mf_get_stride(vtype, g_width);
         IMFMediaType_Release(vtype); vtype = NULL;
         fprintf(stdout, "MF: Video %dx%d stride=%d\n", g_width, g_height, g_stride);
+    }
+
+    /* Initialize DXVA2 hardware acceleration if requested */
+    if (enable_dxva2 && g_width > 0 && g_height > 0) {
+        fprintf(stdout, "MF: Initializing DXVA2 hardware acceleration...\n");
+
+        /* Initialize DXVA2 device */
+        if (dxva2_init(hwnd_display, g_width, g_height) != NULL) {
+            /* Configure DXVA2 decoder */
+            DXVA2DecoderConfig decoder_config;
+            ZeroMemory(&decoder_config, sizeof(decoder_config));
+
+            /* H.264 decoder GUID */
+            decoder_config.guid = (GUID){0x1b81be68, 0xa0c7, 0x11d3, {0xb9, 0x84, 0x00, 0xc0, 0x4f, 0x2e, 0x73, 0xc5}};
+            decoder_config.width = g_width;
+            decoder_config.height = g_height;
+            decoder_config.num_surfaces = 8;
+
+            if (dxva2_decoder_init(&decoder_config) == 0) {
+                /* Initialize video processor for rendering */
+                if (dxva2_processor_init(DXVA2_VideoFormat_NV12, DXVA2_VideoFormat_RGB32) == 0) {
+                    g_dxva2_initialized = 1;
+                    g_dxva2_use_hw_render = 1;
+                    fprintf(stdout, "MF: DXVA2 hardware acceleration enabled\n");
+                } else {
+                    fprintf(stderr, "MF: DXVA2 processor init failed, falling back to software\n");
+                    dxva2_decoder_cleanup();
+                }
+            } else {
+                fprintf(stderr, "MF: DXVA2 decoder init failed, falling back to software\n");
+            }
+        } else {
+            fprintf(stderr, "MF: DXVA2 device init failed, falling back to software\n");
+        }
     }
 
     /* Configure audio */
@@ -599,7 +658,31 @@ int mf_render_next_frame(void)
     hr = IMFMediaBuffer_Lock(buffer, &data, &buf_len, NULL);
     if (FAILED(hr)) { IMFMediaBuffer_Release(buffer); IMFSample_Release(sample); return -1; }
 
-    mf_render_frame(data, g_stride, g_width, g_height, g_hwnd);
+    /* Use DXVA2 hardware rendering if available */
+    if (g_dxva2_use_hw_render && g_dxva2_initialized) {
+        /* Upload frame to DXVA2 surface */
+        if (g_dxva2_surface == NULL) {
+            g_dxva2_surface = dxva2_create_surface(g_width, g_height, D3DFMT_NV12);
+        }
+
+        if (g_dxva2_surface) {
+            /* Upload NV12 data to DXVA2 surface */
+            if (dxva2_upload_surface(g_dxva2_surface, data, g_stride, D3DFMT_NV12) == 0) {
+                /* Use video processor to render */
+                dxva2_processor_render(g_dxva2_surface, NULL, NULL);
+            } else {
+                /* Fallback to software rendering */
+                mf_render_frame(data, g_stride, g_width, g_height, g_hwnd);
+            }
+        } else {
+            /* Fallback to software rendering */
+            mf_render_frame(data, g_stride, g_width, g_height, g_hwnd);
+        }
+    } else {
+        /* Software rendering */
+        mf_render_frame(data, g_stride, g_width, g_height, g_hwnd);
+    }
+
     g_frameCount++;
 
     IMFMediaBuffer_Unlock(buffer);
@@ -618,14 +701,19 @@ void mf_stop(void)
 int mf_is_active(void) { return (g_active && !g_eof) ? 1 : 0; }
 long long mf_get_position(void) { return 0; }
 long long mf_get_duration(void) { return g_duration; }
-int mf_is_using_dxva2(void) { return g_dxva2; }
+int mf_is_using_dxva2(void) { return g_dxva2_initialized; }
 
 const wchar_t *mf_get_decoder_info(void)
 {
     static wchar_t info[256];
     if (g_active) {
-        swprintf(info, 256, L"Media Foundation %dx%d (dropped %d/%d)",
-                 g_width, g_height, g_droppedFrames, g_frameCount);
+        if (g_dxva2_initialized) {
+            swprintf(info, 256, L"Media Foundation + DXVA2 %dx%d (dropped %d/%d)",
+                     g_width, g_height, g_droppedFrames, g_frameCount);
+        } else {
+            swprintf(info, 256, L"Media Foundation %dx%d (dropped %d/%d)",
+                     g_width, g_height, g_droppedFrames, g_frameCount);
+        }
     } else {
         swprintf(info, 256, L"Media Foundation: Not active");
     }
