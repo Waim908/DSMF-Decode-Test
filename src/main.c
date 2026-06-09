@@ -109,7 +109,20 @@ static void EnableButtons(int enable)
 static int CheckFileSelected(void)
 {
     if (g_filePath[0] == L'\0') {
-        MessageBoxW(g_hwndMain, L"\u8bf7\u5148\u9009\u62e9\u89c6\u9891\u6587\u4ef6", L"\u63d0\u793a", MB_OK | MB_ICONINFORMATION);
+        MessageBoxW(g_hwndMain, L"请先选择视频文件", L"提示", MB_OK | MB_ICONINFORMATION);
+        return 0;
+    }
+    return 1;
+}
+
+/* Check if the selected file actually exists on disk */
+static int CheckFileExists(void)
+{
+    DWORD attr = GetFileAttributesW(g_filePath);
+    if (attr == INVALID_FILE_ATTRIBUTES || (attr & FILE_ATTRIBUTE_DIRECTORY)) {
+        wchar_t msg[512];
+        swprintf(msg, 512, L"文件不存在：\n%ls", g_filePath);
+        MessageBoxW(g_hwndMain, msg, L"错误", MB_OK | MB_ICONERROR);
         return 0;
     }
     return 1;
@@ -212,7 +225,7 @@ static void CreateControls(HWND hwnd)
 
     /* Status bar */
     g_hwndStatus = CreateWindowExW(
-        0, STATUSCLASSNAMEW, L"\u8bf7\u5148\u6253\u5f00\u89c6\u9891\u6587\u4ef6",
+        0, STATUSCLASSNAMEW, L"请先打开视频文件",
         WS_CHILD | WS_VISIBLE | SBARS_SIZEGRIP,
         0, 0, 0, 0,
         hwnd, (HMENU)(UINT_PTR)IDC_STATUS_BAR, NULL, NULL);
@@ -285,13 +298,14 @@ static void StartDirectShow(void)
     wchar_t msg[512];
     if (g_switching) return;
     if (!CheckFileSelected()) return;
+    if (!CheckFileExists()) return;
     g_switching = 1;
     EnableButtons(FALSE);
     StopAll();
     UpdateStatus(L"DirectShow: 正在打开...");
     int ret = ds_open(g_filePath, g_hwndDisplay);
     if (ret != 0) {
-        swprintf(msg, 512, L"DirectShow: 打开失败 - %ls", g_filePath);
+        swprintf(msg, 512, L"DirectShow: 无法播放 - %ls", g_filePath);
         UpdateStatus(msg);
         EnableButtons(TRUE);
         g_switching = 0;
@@ -314,13 +328,14 @@ static void StartDirectShowDXVA2(void)
     wchar_t msg[512];
     if (g_switching) return;
     if (!CheckFileSelected()) return;
+    if (!CheckFileExists()) return;
     g_switching = 1;
     EnableButtons(FALSE);
     StopAll();
     UpdateStatus(L"DirectShow + DXVA2: 正在打开...");
     int ret = ds_open_dxva2(g_filePath, g_hwndDisplay, 1);
     if (ret != 0) {
-        swprintf(msg, 512, L"DirectShow + DXVA2: 打开失败 - %ls", g_filePath);
+        swprintf(msg, 512, L"DirectShow + DXVA2: 无法播放 - %ls", g_filePath);
         UpdateStatus(msg);
         EnableButtons(TRUE);
         g_switching = 0;
@@ -344,13 +359,14 @@ static void StartMFSoftware(void)
     wchar_t msg[512];
     if (g_switching) return;
     if (!CheckFileSelected()) return;
+    if (!CheckFileExists()) return;
     g_switching = 1;
     EnableButtons(FALSE);
     StopAll();
     UpdateStatus(L"Media Foundation (软件): 正在打开...");
     int ret = mf_open(g_filePath, g_hwndDisplay, 0);
     if (ret != 0) {
-        swprintf(msg, 512, L"Media Foundation: 打开失败 - %ls", g_filePath);
+        swprintf(msg, 512, L"Media Foundation: 无法播放 - %ls", g_filePath);
         UpdateStatus(msg);
         EnableButtons(TRUE);
         g_switching = 0;
@@ -373,6 +389,7 @@ static void StartMFDXVA2(void)
     wchar_t msg[512];
     if (g_switching) return;
     if (!CheckFileSelected()) return;
+    if (!CheckFileExists()) return;
     g_switching = 1;
     EnableButtons(FALSE);
     StopAll();
@@ -381,7 +398,7 @@ static void StartMFDXVA2(void)
         UpdateStatus(L"DXVA2: 硬件加速不可用，将使用软件解码");
     int ret = mf_open(g_filePath, g_hwndDisplay, 1);
     if (ret != 0) {
-        swprintf(msg, 512, L"MF+DXVA2: 打开失败 - %ls", g_filePath);
+        swprintf(msg, 512, L"MF+DXVA2: 无法播放 - %ls", g_filePath);
         UpdateStatus(msg);
         EnableButtons(TRUE);
         g_switching = 0;
@@ -404,6 +421,7 @@ static void StartMFD3D11(void)
     wchar_t msg[512];
     if (g_switching) return;
     if (!CheckFileSelected()) return;
+    if (!CheckFileExists()) return;
     g_switching = 1;
     EnableButtons(FALSE);
     StopAll();
@@ -414,7 +432,7 @@ static void StartMFD3D11(void)
         UpdateStatus(L"D3D11: 设备初始化失败，将使用软件解码");
     int ret = mf_open(g_filePath, g_hwndDisplay, 2);
     if (ret != 0) {
-        swprintf(msg, 512, L"MF+D3D11: 打开失败 - %ls", g_filePath);
+        swprintf(msg, 512, L"MF+D3D11: 无法播放 - %ls", g_filePath);
         UpdateStatus(msg);
         EnableButtons(TRUE);
         g_switching = 0;
@@ -437,6 +455,7 @@ static void StartMFD3D12(void)
     wchar_t msg[512];
     if (g_switching) return;
     if (!CheckFileSelected()) return;
+    if (!CheckFileExists()) return;
     g_switching = 1;
     EnableButtons(FALSE);
     StopAll();
@@ -447,7 +466,7 @@ static void StartMFD3D12(void)
         UpdateStatus(L"D3D12: 设备初始化失败，将使用软件解码");
     int ret = mf_open(g_filePath, g_hwndDisplay, 3);
     if (ret != 0) {
-        swprintf(msg, 512, L"MF+D3D12: 打开失败 - %ls", g_filePath);
+        swprintf(msg, 512, L"MF+D3D12: 无法播放 - %ls", g_filePath);
         UpdateStatus(msg);
         EnableButtons(TRUE);
         g_switching = 0;
@@ -486,9 +505,9 @@ static INT_PTR CALLBACK AboutDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM 
     switch (msg) {
     case WM_INITDIALOG: {
         /* Set Chinese text programmatically (avoids encoding issues in RC file) */
-        SetWindowTextW(hDlg, L"\u5173\u4e8e DSMF-Decode-Test");
-        SetDlgItemTextW(hDlg, IDC_ABOUT_VERSION, L"\u7248\u672c\uff1a0.1");
-        SetDlgItemTextW(hDlg, IDOK, L"\u786e\u5b9a");
+        SetWindowTextW(hDlg, L"关于 DSMF-Decode-Test");
+        SetDlgItemTextW(hDlg, IDC_ABOUT_VERSION, L"版本：0.1");
+        SetDlgItemTextW(hDlg, IDOK, L"确定");
 
         /* Set compiler info text */
         wchar_t compilerInfo[256];
