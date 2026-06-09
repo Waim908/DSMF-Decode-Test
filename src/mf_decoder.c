@@ -399,34 +399,41 @@ int mf_open(const wchar_t *filepath, HWND hwnd_display, int enable_dxva2)
         /* D3D11 mode */
         fprintf(stdout, "MF: Initializing D3D11 hardware acceleration...\n");
 
-        /* Initialize D3D11 device */
-        if (d3d11_video_init(hwnd_display, g_width, g_height) == 0) {
-            /* Configure D3D11 decoder */
-            D3D11VideoDecoderConfig decoder_config;
-            ZeroMemory(&decoder_config, sizeof(decoder_config));
-
-            /* H.264 decoder profile */
-            decoder_config.guid = (GUID){0x1b81be68, 0xa0c7, 0x11d3, {0xb9, 0x84, 0x00, 0xc0, 0x4f, 0x2e, 0x73, 0xc5}};
-            decoder_config.width = g_width;
-            decoder_config.height = g_height;
-            decoder_config.num_surfaces = 8;
-
-            if (d3d11_video_decoder_init(&decoder_config) == 0) {
-                /* Initialize video processor for rendering */
-                if (d3d11_video_processor_init() == 0) {
-                    g_d3d11_initialized = 1;
-                    g_d3d11_use_hw_render = 1;
-                    fprintf(stdout, "MF: D3D11 hardware acceleration enabled\n");
-                } else {
-                    fprintf(stderr, "MF: D3D11 processor init failed, falling back to software\n");
-                    d3d11_video_decoder_cleanup();
-                }
-            } else {
-                fprintf(stderr, "MF: D3D11 decoder init failed, falling back to software\n");
+        /* Check if D3D11 device is already initialized */
+        if (!d3d11_video_is_initialized()) {
+            /* Initialize D3D11 device */
+            if (d3d11_video_init(hwnd_display, g_width, g_height) != 0) {
+                fprintf(stderr, "MF: D3D11 device init failed, falling back to software\n");
+                goto d3d11_failed;
             }
         } else {
-            fprintf(stderr, "MF: D3D11 device init failed, falling back to software\n");
+            fprintf(stdout, "MF: D3D11 device already initialized, reusing\n");
         }
+
+        /* Configure D3D11 decoder */
+        D3D11VideoDecoderConfig decoder_config;
+        ZeroMemory(&decoder_config, sizeof(decoder_config));
+
+        /* H.264 decoder profile */
+        decoder_config.guid = (GUID){0x1b81be68, 0xa0c7, 0x11d3, {0xb9, 0x84, 0x00, 0xc0, 0x4f, 0x2e, 0x73, 0xc5}};
+        decoder_config.width = g_width;
+        decoder_config.height = g_height;
+        decoder_config.num_surfaces = 8;
+
+        if (d3d11_video_decoder_init(&decoder_config) == 0) {
+            /* Initialize video processor for rendering */
+            if (d3d11_video_processor_init() == 0) {
+                g_d3d11_initialized = 1;
+                g_d3d11_use_hw_render = 1;
+                fprintf(stdout, "MF: D3D11 hardware acceleration enabled\n");
+            } else {
+                fprintf(stderr, "MF: D3D11 processor init failed, falling back to software\n");
+                d3d11_video_decoder_cleanup();
+            }
+        } else {
+            fprintf(stderr, "MF: D3D11 decoder init failed, falling back to software\n");
+        }
+        d3d11_failed:;
     }
 
     /* Configure audio */

@@ -29,6 +29,9 @@ ID3D11Device *d3d11_video_get_device(void);
 /* Get the D3D11 device context */
 ID3D11DeviceContext *d3d11_video_get_context(void);
 
+/* Check if D3D11 device is already initialized */
+int d3d11_video_is_initialized(void);
+
 /* Present the current frame */
 int d3d11_video_present(void);
 

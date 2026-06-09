@@ -209,41 +209,64 @@ int ds_open_dxva2(const wchar_t *filepath, HWND hwnd_display, int enable_dxva2)
         return -1;
     }
 
-    if (pSource) IBaseFilter_Release(pSource);
-    if (pRenderer) IBaseFilter_Release(pRenderer);
-
-    /* Embed video window into our display area */
-    if (hwnd_display && pVideo) {
-        g_hwndDisplay = hwnd_display;
-
-        IVideoWindow_put_Owner(pVideo, (OAHWND)hwnd_display);
-        IVideoWindow_put_WindowStyle(pVideo, WS_CHILD | WS_CLIPSIBLINGS | WS_CLIPCHILDREN);
-        IVideoWindow_put_MessageDrain(pVideo, (OAHWND)hwnd_display);
-        IVideoWindow_put_AutoShow(pVideo, OAFALSE);
-
-        /* Get native video size from IBasicVideo */
-        g_video_w = 0;
-        g_video_h = 0;
-        if (pBasicVideo) {
-            long vw = 0, vh = 0;
-            IBasicVideo_get_SourceWidth(pBasicVideo, &vw);
-            IBasicVideo_get_SourceHeight(pBasicVideo, &vh);
-            if (vw > 0 && vh > 0) {
-                g_video_w = vw;
-                g_video_h = vh;
-                fprintf(stdout, "DirectShow: Native video size %ldx%ld\n", vw, vh);
+            if (pSource) IBaseFilter_Release(pSource);
+            if (pRenderer) IBaseFilter_Release(pRenderer);
+    
+            /* Embed video window into our display area */
+            if (hwnd_display && pVideo) {
+                g_hwndDisplay = hwnd_display;
+    
+                IVideoWindow_put_Owner(pVideo, (OAHWND)hwnd_display);
+                IVideoWindow_put_WindowStyle(pVideo, WS_CHILD | WS_CLIPSIBLINGS | WS_CLIPCHILDREN);
+                IVideoWindow_put_MessageDrain(pVideo, (OAHWND)hwnd_display);
+                IVideoWindow_put_AutoShow(pVideo, OAFALSE);
+    
+                /* Get native video size from IBasicVideo */
+                g_video_w = 0;
+                g_video_h = 0;
+                if (pBasicVideo) {
+                    long vw = 0, vh = 0;
+                    IBasicVideo_get_SourceWidth(pBasicVideo, &vw);
+                    IBasicVideo_get_SourceHeight(pBasicVideo, &vh);
+                    if (vw > 0 && vh > 0) {
+                        g_video_w = vw;
+                        g_video_h = vh;
+                        fprintf(stdout, "DirectShow: Native video size %ldx%ld\n", vw, vh);
+                    }
+                }
+    
+                /* For VMR-9/EVR, set the video position directly */
+                {
+                    RECT rc;
+                    GetClientRect(hwnd_display, &rc);
+                    int display_w = rc.right;
+                    int display_h = rc.bottom;
+    
+                    if (g_video_w > 0 && g_video_h > 0) {
+                        /* Calculate aspect-ratio preserving size */
+                        float scale_x = (float)display_w / (float)g_video_w;
+                        float scale_y = (float)display_h / (float)g_video_h;
+                        float scale = (scale_x < scale_y) ? scale_x : scale_y;
+                        int draw_w = (int)(g_video_w * scale);
+                        int draw_h = (int)(g_video_h * scale);
+                        int draw_x = (display_w - draw_w) / 2;
+                        int draw_y = (display_h - draw_h) / 2;
+    
+                        /* Set video position */
+                        IVideoWindow_SetWindowPosition(pVideo, draw_x, draw_y, draw_w, draw_h);
+                        fprintf(stdout, "DirectShow: Video position set to %dx%d at (%d,%d)\n", draw_w, draw_h, draw_x, draw_y);
+                    } else {
+                        /* No video size info, fill the window */
+                        IVideoWindow_SetWindowPosition(pVideo, 0, 0, display_w, display_h);
+                    }
+                }
+    
+                IVideoWindow_put_Visible(pVideo, OATRUE);
             }
+    
+            g_playing = 0;
+            return 0;
         }
-
-        /* Fit video to display area with aspect ratio */
-        ds_update_aspect();
-        IVideoWindow_put_Visible(pVideo, OATRUE);
-    }
-
-    g_playing = 0;
-    return 0;
-}
-
 int ds_play(void)
 {
     if (!pControl) return -1;
@@ -308,6 +331,20 @@ void ds_resize(int x, int y, int w, int h)
 {
     if (!pVideo || w <= 0 || h <= 0) return;
 
+    /* Fill background black */
+    if (g_hwndDisplay) {
+        HDC hdc = GetDC(g_hwndDisplay);
+        if (hdc) {
+            RECT rc;
+            GetClientRect(g_hwndDisplay, &rc);
+            HBRUSH brush = CreateSolidBrush(RGB(0, 0, 0));
+            RECT full = {0, 0, rc.right, rc.bottom};
+            FillRect(hdc, &full, brush);
+            DeleteObject(brush);
+            ReleaseDC(g_hwndDisplay, hdc);
+        }
+    }
+
     if (g_video_w > 0 && g_video_h > 0) {
         /* Aspect-ratio preserving letterbox */
         float scale_x = (float)w / (float)g_video_w;
@@ -317,20 +354,6 @@ void ds_resize(int x, int y, int w, int h)
         int draw_h = (int)(g_video_h * scale);
         int draw_x = x + (w - draw_w) / 2;
         int draw_y = y + (h - draw_h) / 2;
-
-        /* Fill background black */
-        if (g_hwndDisplay) {
-            HDC hdc = GetDC(g_hwndDisplay);
-            if (hdc) {
-                RECT rc;
-                GetClientRect(g_hwndDisplay, &rc);
-                HBRUSH brush = CreateSolidBrush(RGB(0, 0, 0));
-                RECT full = {0, 0, rc.right, rc.bottom};
-                FillRect(hdc, &full, brush);
-                DeleteObject(brush);
-                ReleaseDC(g_hwndDisplay, hdc);
-            }
-        }
 
         IVideoWindow_SetWindowPosition(pVideo, draw_x, draw_y, draw_w, draw_h);
     } else {

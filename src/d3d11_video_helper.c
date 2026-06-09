@@ -238,6 +238,11 @@ ID3D11DeviceContext *d3d11_video_get_context(void)
     return pD3D11Context;
 }
 
+int d3d11_video_is_initialized(void)
+{
+    return (pD3D11Device != NULL) ? 1 : 0;
+}
+
 int d3d11_video_present(void)
 {
     if (!pSwapChain) return -1;
@@ -613,7 +618,7 @@ ID3D11Texture2D *d3d11_video_create_texture(UINT width, UINT height, DXGI_FORMAT
     desc.Format = format;
     desc.SampleDesc.Count = 1;
     desc.Usage = D3D11_USAGE_DEFAULT;
-    desc.BindFlags = D3D11_BIND_DECODER | D3D11_BIND_SHADER_RESOURCE;
+    desc.BindFlags = D3D11_BIND_DECODER;
 
     hr = ID3D11Device_CreateTexture2D(pD3D11Device, &desc, NULL, &texture);
     if (FAILED(hr)) {
@@ -626,33 +631,86 @@ ID3D11Texture2D *d3d11_video_create_texture(UINT width, UINT height, DXGI_FORMAT
 
 int d3d11_video_upload_texture(ID3D11Texture2D *texture, const BYTE *data, int stride, DXGI_FORMAT format)
 {
-    if (!pD3D11Context || !texture || !data) return -1;
+    HRESULT hr;
+
+    if (!pD3D11Device || !pD3D11Context || !texture || !data) return -1;
 
     /* Get texture description */
     D3D11_TEXTURE2D_DESC desc;
     texture->lpVtbl->GetDesc(texture, &desc);
 
-    /* For D3D11, we need to use UpdateSubresource or Map/Unmap */
-    /* Since video textures are usually DEFAULT usage, we use UpdateSubresource */
-    UINT rowSize = desc.Width;
+    /* Create staging texture for upload */
+    D3D11_TEXTURE2D_DESC stagingDesc;
+    ZeroMemory(&stagingDesc, sizeof(stagingDesc));
+    stagingDesc.Width = desc.Width;
+    stagingDesc.Height = desc.Height;
+    stagingDesc.MipLevels = 1;
+    stagingDesc.ArraySize = 1;
+    stagingDesc.Format = desc.Format;
+    stagingDesc.SampleDesc.Count = 1;
+    stagingDesc.Usage = D3D11_USAGE_STAGING;
+    stagingDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+
+    ID3D11Texture2D *stagingTexture = NULL;
+    hr = ID3D11Device_CreateTexture2D(pD3D11Device, &stagingDesc, NULL, &stagingTexture);
+    if (FAILED(hr)) {
+        fprintf(stderr, "D3D11: Create staging texture failed: 0x%08lx\n", hr);
+        return -1;
+    }
+
+    /* Map staging texture */
+    D3D11_MAPPED_SUBRESOURCE mapped;
+    hr = ID3D11DeviceContext_Map(pD3D11Context, (ID3D11Resource *)stagingTexture, 0, D3D11_MAP_WRITE, 0, &mapped);
+    if (FAILED(hr)) {
+        fprintf(stderr, "D3D11: Map staging texture failed: 0x%08lx\n", hr);
+        SAFE_RELEASE(stagingTexture);
+        return -1;
+    }
+
+    /* Copy data to staging texture based on format */
     if (format == DXGI_FORMAT_NV12) {
-        rowSize = desc.Width; /* Y plane row size */
+        /* NV12 has two planes: Y (height) and UV (height/2) */
+        const BYTE *srcY = data;
+        const BYTE *srcUV = data + stride * desc.Height;
+        BYTE *dstY = (BYTE *)mapped.pData;
+        BYTE *dstUV = (BYTE *)mapped.pData + mapped.RowPitch * desc.Height;
+
+        /* Copy Y plane */
+        for (UINT y = 0; y < desc.Height; y++) {
+            memcpy(dstY + y * mapped.RowPitch, srcY + y * stride, desc.Width);
+        }
+
+        /* Copy UV plane */
+        for (UINT y = 0; y < desc.Height / 2; y++) {
+            memcpy(dstUV + y * mapped.RowPitch, srcUV + y * stride, desc.Width);
+        }
     } else if (format == DXGI_FORMAT_YUY2) {
-        rowSize = desc.Width * 2;
+        /* YUY2 is packed format */
+        UINT rowSize = desc.Width * 2;
+        for (UINT y = 0; y < desc.Height; y++) {
+            memcpy((BYTE *)mapped.pData + y * mapped.RowPitch, data + y * stride, rowSize);
+        }
     } else if (format == DXGI_FORMAT_B8G8R8A8_UNORM) {
-        rowSize = desc.Width * 4;
+        /* BGRA is packed format */
+        UINT rowSize = desc.Width * 4;
+        for (UINT y = 0; y < desc.Height; y++) {
+            memcpy((BYTE *)mapped.pData + y * mapped.RowPitch, data + y * stride, rowSize);
+        }
+    } else {
+        fprintf(stderr, "D3D11: Unsupported format for upload: %d\n", format);
+        ID3D11DeviceContext_Unmap(pD3D11Context, (ID3D11Resource *)stagingTexture, 0);
+        SAFE_RELEASE(stagingTexture);
+        return -1;
     }
 
-    /* Copy data */
-    for (UINT y = 0; y < desc.Height; y++) {
-        ID3D11DeviceContext_UpdateSubresource(pD3D11Context,
-            (ID3D11Resource *)texture,
-            0,
-            NULL,
-            data + y * stride,
-            rowSize,
-            0);
-    }
+    /* Unmap staging texture */
+    ID3D11DeviceContext_Unmap(pD3D11Context, (ID3D11Resource *)stagingTexture, 0);
 
+    /* Copy from staging texture to target texture */
+    ID3D11DeviceContext_CopySubresourceRegion(pD3D11Context,
+        (ID3D11Resource *)texture, 0, 0, 0, 0,
+        (ID3D11Resource *)stagingTexture, 0, NULL);
+
+    SAFE_RELEASE(stagingTexture);
     return 0;
 }
