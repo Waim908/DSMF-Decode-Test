@@ -143,10 +143,12 @@ static void mf_cleanup_internals(void)
 {
     int i;
 
-    /* Stop audio thread first */
+    /* Signal audio thread to stop first, then set g_active=0 so the thread
+     * can exit even if it's blocked in ReadSample (it checks g_active in the loop). */
     if (g_hAudioThread) {
         g_audioThreadStop = 1;
-        WaitForSingleObject(g_hAudioThread, 3000);
+        g_active = 0;  /* Let audio thread loop condition fail */
+        WaitForSingleObject(g_hAudioThread, 500);
         CloseHandle(g_hAudioThread);
         g_hAudioThread = NULL;
     }
@@ -201,6 +203,17 @@ static void mf_cleanup_internals(void)
         g_d3d12_initialized = 0;
     }
     g_d3d12_use_hw_render = 0;
+
+    /* Clear display area to prevent residual frames */
+    if (g_hwnd) {
+        HDC hdc = GetDC(g_hwnd);
+        if (hdc) {
+            RECT rc;
+            GetClientRect(g_hwnd, &rc);
+            FillRect(hdc, &rc, (HBRUSH)GetStockObject(BLACK_BRUSH));
+            ReleaseDC(g_hwnd, hdc);
+        }
+    }
 
     g_active = 0;
     g_eof    = 0;

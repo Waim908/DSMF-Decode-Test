@@ -35,7 +35,25 @@ static void ds_update_aspect(void)
 
 static void ds_cleanup(void)
 {
-    if (pVideo)      { IVideoWindow_put_Visible(pVideo, OAFALSE); IVideoWindow_put_Owner(pVideo, 0); IVideoWindow_Release(pVideo); pVideo = NULL; }
+    /* Hide video window and detach from owner */
+    if (pVideo) {
+        IVideoWindow_put_Visible(pVideo, OAFALSE);
+        IVideoWindow_put_Owner(pVideo, 0);
+    }
+
+    /* Clear display area to prevent residual frames */
+    if (g_hwndDisplay) {
+        HDC hdc = GetDC(g_hwndDisplay);
+        if (hdc) {
+            RECT rc;
+            GetClientRect(g_hwndDisplay, &rc);
+            FillRect(hdc, &rc, (HBRUSH)GetStockObject(BLACK_BRUSH));
+            ReleaseDC(g_hwndDisplay, hdc);
+        }
+    }
+
+    /* Release all DirectShow interfaces */
+    if (pVideo)      { IVideoWindow_Release(pVideo); pVideo = NULL; }
     if (pBasicVideo)  { IBasicVideo_Release(pBasicVideo); pBasicVideo = NULL; }
     if (pSeeking)     { IMediaSeeking_Release(pSeeking); pSeeking = NULL; }
     if (pAudio)       { IBasicAudio_Release(pAudio); pAudio = NULL; }

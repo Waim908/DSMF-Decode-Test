@@ -47,6 +47,7 @@ static HFONT g_hFont         = NULL;
 /* Current state */
 static int   g_currentMode   = 0;
 static int   g_renderTimerActive = 0;
+static int   g_switching      = 0;  /* Guard against rapid button clicks */
 static wchar_t g_filePath[MAX_PATH] = {0};
 static HBRUSH g_hBrushBlack  = NULL;
 
@@ -75,6 +76,18 @@ static HWND MakeButton(HWND parent, const wchar_t *text, int id, int x, int y, i
         x, y, w, BTN_H, parent, (HMENU)(UINT_PTR)id, NULL, NULL);
     if (h && g_hFont) SendMessageW(h, WM_SETFONT, (WPARAM)g_hFont, TRUE);
     return h;
+}
+
+/* Enable/disable all playback buttons to prevent rapid-click race conditions */
+static void EnableButtons(int enable)
+{
+    EnableWindow(g_hwndBtnDS,      enable);
+    EnableWindow(g_hwndBtnDSDxva2, enable);
+    EnableWindow(g_hwndBtnMF,      enable);
+    EnableWindow(g_hwndBtnDxva2,   enable);
+    EnableWindow(g_hwndBtnD3D11,   enable);
+    EnableWindow(g_hwndBtnD3D12,   enable);
+    EnableWindow(g_hwndBtnOpen,    enable);
 }
 
 /* Entry point */
@@ -249,7 +262,9 @@ static void StopAll(void)
     d3d12_video_cleanup();
     g_currentMode = 0;
 
-    /* Synchronously clear display area to prevent residual frames */
+    /* Clear display area to prevent residual frames.
+     * Use InvalidateRect without RDW_UPDATENOW to avoid forcing a synchronous
+     * black repaint before the new decoder has a chance to render its first frame. */
     if (g_hwndDisplay) {
         HDC hdc = GetDC(g_hwndDisplay);
         if (hdc) {
@@ -259,7 +274,6 @@ static void StopAll(void)
             ReleaseDC(g_hwndDisplay, hdc);
         }
         InvalidateRect(g_hwndDisplay, NULL, TRUE);
-        UpdateWindow(g_hwndDisplay);
     }
     UpdateStatus(L"已停止");
 }
@@ -267,68 +281,94 @@ static void StopAll(void)
 static void StartDirectShow(void)
 {
     wchar_t msg[512];
+    if (g_switching) return;
+    g_switching = 1;
+    EnableButtons(FALSE);
     StopAll();
     UpdateStatus(L"DirectShow: 正在打开...");
     int ret = ds_open(g_filePath, g_hwndDisplay);
     if (ret != 0) {
         swprintf(msg, 512, L"DirectShow: 打开失败 - %ls", g_filePath);
         UpdateStatus(msg);
+        EnableButtons(TRUE);
+        g_switching = 0;
         MessageBoxW(g_hwndMain, msg, L"错误", MB_OK | MB_ICONERROR);
         return;
     }
     ret = ds_play();
-    if (ret != 0) { UpdateStatus(L"DirectShow: 播放失败"); ds_stop(); return; }
+    if (ret != 0) { UpdateStatus(L"DirectShow: 播放失败"); ds_stop(); EnableButtons(TRUE); g_switching = 0; return; }
     g_currentMode = 1;
     swprintf(msg, 512, L"DirectShow: 正在播放 %ls", g_filePath);
     UpdateStatus(msg);
     SetTimer(g_hwndMain, TIMER_RENDER, 100, NULL);
     g_renderTimerActive = 1;
+    EnableButtons(TRUE);
+    g_switching = 0;
 }
 
 static void StartDirectShowDXVA2(void)
 {
     wchar_t msg[512];
+    if (g_switching) return;
+    g_switching = 1;
+    EnableButtons(FALSE);
     StopAll();
     UpdateStatus(L"DirectShow + DXVA2: 正在打开...");
     int ret = ds_open_dxva2(g_filePath, g_hwndDisplay, 1);
     if (ret != 0) {
         swprintf(msg, 512, L"DirectShow + DXVA2: 打开失败 - %ls", g_filePath);
         UpdateStatus(msg);
+        EnableButtons(TRUE);
+        g_switching = 0;
         MessageBoxW(g_hwndMain, msg, L"错误", MB_OK | MB_ICONERROR);
         return;
     }
     ret = ds_play();
-    if (ret != 0) { UpdateStatus(L"DirectShow + DXVA2: 播放失败"); ds_stop(); return; }
+    if (ret != 0) { UpdateStatus(L"DirectShow + DXVA2: 播放失败"); ds_stop(); EnableButtons(TRUE); g_switching = 0; return; }
     g_currentMode = 5;
     swprintf(msg, 512, L"DirectShow + DXVA2: 正在播放 %ls%s", g_filePath,
              ds_is_using_dxva2() ? L" (硬件加速)" : L" (软件回退)");
     UpdateStatus(msg);
     SetTimer(g_hwndMain, TIMER_RENDER, 100, NULL);
     g_renderTimerActive = 1;
+    EnableButtons(TRUE);
+    g_switching = 0;
 }
 
 static void StartMFSoftware(void)
 {
     wchar_t msg[512];
+    if (g_switching) return;
+    g_switching = 1;
+    EnableButtons(FALSE);
     StopAll();
     UpdateStatus(L"Media Foundation (软件): 正在打开...");
     int ret = mf_open(g_filePath, g_hwndDisplay, 0);
     if (ret != 0) {
         swprintf(msg, 512, L"Media Foundation: 打开失败 - %ls", g_filePath);
         UpdateStatus(msg);
+        EnableButtons(TRUE);
+        g_switching = 0;
         MessageBoxW(g_hwndMain, msg, L"错误", MB_OK | MB_ICONERROR);
         return;
     }
     g_currentMode = 2;
+    /* Render first frame immediately to avoid black screen */
+    mf_render_next_frame();
     swprintf(msg, 512, L"Media Foundation (软件解码): %ls", mf_get_decoder_info());
     UpdateStatus(msg);
     SetTimer(g_hwndMain, TIMER_RENDER, 33, NULL);
     g_renderTimerActive = 1;
+    EnableButtons(TRUE);
+    g_switching = 0;
 }
 
 static void StartMFDXVA2(void)
 {
     wchar_t msg[512];
+    if (g_switching) return;
+    g_switching = 1;
+    EnableButtons(FALSE);
     StopAll();
     UpdateStatus(L"Media Foundation + DXVA2: 正在初始化...");
     if (!dxva2_check_support())
@@ -337,19 +377,28 @@ static void StartMFDXVA2(void)
     if (ret != 0) {
         swprintf(msg, 512, L"MF+DXVA2: 打开失败 - %ls", g_filePath);
         UpdateStatus(msg);
+        EnableButtons(TRUE);
+        g_switching = 0;
         MessageBoxW(g_hwndMain, msg, L"错误", MB_OK | MB_ICONERROR);
         return;
     }
     g_currentMode = 3;
+    /* Render first frame immediately to avoid black screen */
+    mf_render_next_frame();
     swprintf(msg, 512, L"Media Foundation + DXVA2: %ls", mf_get_decoder_info());
     UpdateStatus(msg);
     SetTimer(g_hwndMain, TIMER_RENDER, 33, NULL);
     g_renderTimerActive = 1;
+    EnableButtons(TRUE);
+    g_switching = 0;
 }
 
 static void StartMFD3D11(void)
 {
     wchar_t msg[512];
+    if (g_switching) return;
+    g_switching = 1;
+    EnableButtons(FALSE);
     StopAll();
     UpdateStatus(L"Media Foundation + D3D11: 正在初始化...");
     if (!d3d11_video_check_support())
@@ -360,19 +409,28 @@ static void StartMFD3D11(void)
     if (ret != 0) {
         swprintf(msg, 512, L"MF+D3D11: 打开失败 - %ls", g_filePath);
         UpdateStatus(msg);
+        EnableButtons(TRUE);
+        g_switching = 0;
         MessageBoxW(g_hwndMain, msg, L"错误", MB_OK | MB_ICONERROR);
         return;
     }
     g_currentMode = 4;
+    /* Render first frame immediately to avoid black screen */
+    mf_render_next_frame();
     swprintf(msg, 512, L"Media Foundation + D3D11: %ls", mf_get_decoder_info());
     UpdateStatus(msg);
     SetTimer(g_hwndMain, TIMER_RENDER, 33, NULL);
     g_renderTimerActive = 1;
+    EnableButtons(TRUE);
+    g_switching = 0;
 }
 
 static void StartMFD3D12(void)
 {
     wchar_t msg[512];
+    if (g_switching) return;
+    g_switching = 1;
+    EnableButtons(FALSE);
     StopAll();
     UpdateStatus(L"Media Foundation + D3D12: 正在初始化...");
     if (!d3d12_video_check_support())
@@ -383,14 +441,20 @@ static void StartMFD3D12(void)
     if (ret != 0) {
         swprintf(msg, 512, L"MF+D3D12: 打开失败 - %ls", g_filePath);
         UpdateStatus(msg);
+        EnableButtons(TRUE);
+        g_switching = 0;
         MessageBoxW(g_hwndMain, msg, L"错误", MB_OK | MB_ICONERROR);
         return;
     }
     g_currentMode = 6;
+    /* Render first frame immediately to avoid black screen */
+    mf_render_next_frame();
     swprintf(msg, 512, L"Media Foundation + D3D12: %ls", mf_get_decoder_info());
     UpdateStatus(msg);
     SetTimer(g_hwndMain, TIMER_RENDER, 33, NULL);
     g_renderTimerActive = 1;
+    EnableButtons(TRUE);
+    g_switching = 0;
 }
 
 static int OpenFileDialog(HWND hwnd, wchar_t *path, int path_len)
