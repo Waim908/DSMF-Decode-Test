@@ -67,9 +67,6 @@ static int   g_switching      = 0;  /* Guard against rapid button clicks */
 static wchar_t g_filePath[MAX_PATH] = {0};
 static HBRUSH g_hBrushBlack  = NULL;
 
-/* Default file path */
-static const wchar_t DEFAULT_FILE[] = L"demo.mp4";
-
 /* Forward declarations */
 static LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 static void CreateControls(HWND hwnd);
@@ -106,6 +103,16 @@ static void EnableButtons(int enable)
     EnableWindow(g_hwndBtnD3D11,   enable);
     EnableWindow(g_hwndBtnD3D12,   enable);
     EnableWindow(g_hwndBtnOpen,    enable);
+}
+
+/* Check if a file has been selected, show message if not */
+static int CheckFileSelected(void)
+{
+    if (g_filePath[0] == L'\0') {
+        MessageBoxW(g_hwndMain, L"\u8bf7\u5148\u9009\u62e9\u89c6\u9891\u6587\u4ef6", L"\u63d0\u793a", MB_OK | MB_ICONINFORMATION);
+        return 0;
+    }
+    return 1;
 }
 
 /* Entry point */
@@ -152,31 +159,6 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 
     ShowWindow(g_hwndMain, nCmdShow);
     UpdateWindow(g_hwndMain);
-
-    /* Default file path */
-    {
-        wchar_t exe_dir[MAX_PATH];
-        GetModuleFileNameW(NULL, exe_dir, MAX_PATH);
-        wchar_t *last_slash = wcsrchr(exe_dir, L'\\');
-        wchar_t *last_fwd_slash = wcsrchr(exe_dir, L'/');
-        if (last_fwd_slash && (!last_slash || last_fwd_slash > last_slash))
-            last_slash = last_fwd_slash;
-        if (last_slash) {
-            *(last_slash + 1) = L'\0';
-            swprintf(g_filePath, MAX_PATH, L"%s%s", exe_dir, DEFAULT_FILE);
-        } else {
-            wcscpy(g_filePath, DEFAULT_FILE);
-        }
-        DWORD fileAttr = GetFileAttributesW(g_filePath);
-        if (fileAttr == INVALID_FILE_ATTRIBUTES) {
-            wchar_t cwd[MAX_PATH];
-            GetCurrentDirectoryW(MAX_PATH, cwd);
-            swprintf(g_filePath, MAX_PATH, L"%s\\%s", cwd, DEFAULT_FILE);
-            fileAttr = GetFileAttributesW(g_filePath);
-            if (fileAttr == INVALID_FILE_ATTRIBUTES)
-                wcscpy(g_filePath, DEFAULT_FILE);
-        }
-    }
 
     while (GetMessage(&msg, NULL, 0, 0)) {
         TranslateMessage(&msg);
@@ -230,7 +212,7 @@ static void CreateControls(HWND hwnd)
 
     /* Status bar */
     g_hwndStatus = CreateWindowExW(
-        0, STATUSCLASSNAMEW, L"就绪 - 选择解码方式开始播放",
+        0, STATUSCLASSNAMEW, L"\u8bf7\u5148\u6253\u5f00\u89c6\u9891\u6587\u4ef6",
         WS_CHILD | WS_VISIBLE | SBARS_SIZEGRIP,
         0, 0, 0, 0,
         hwnd, (HMENU)(UINT_PTR)IDC_STATUS_BAR, NULL, NULL);
@@ -302,6 +284,7 @@ static void StartDirectShow(void)
 {
     wchar_t msg[512];
     if (g_switching) return;
+    if (!CheckFileSelected()) return;
     g_switching = 1;
     EnableButtons(FALSE);
     StopAll();
@@ -330,6 +313,7 @@ static void StartDirectShowDXVA2(void)
 {
     wchar_t msg[512];
     if (g_switching) return;
+    if (!CheckFileSelected()) return;
     g_switching = 1;
     EnableButtons(FALSE);
     StopAll();
@@ -359,6 +343,7 @@ static void StartMFSoftware(void)
 {
     wchar_t msg[512];
     if (g_switching) return;
+    if (!CheckFileSelected()) return;
     g_switching = 1;
     EnableButtons(FALSE);
     StopAll();
@@ -387,6 +372,7 @@ static void StartMFDXVA2(void)
 {
     wchar_t msg[512];
     if (g_switching) return;
+    if (!CheckFileSelected()) return;
     g_switching = 1;
     EnableButtons(FALSE);
     StopAll();
@@ -417,6 +403,7 @@ static void StartMFD3D11(void)
 {
     wchar_t msg[512];
     if (g_switching) return;
+    if (!CheckFileSelected()) return;
     g_switching = 1;
     EnableButtons(FALSE);
     StopAll();
@@ -449,6 +436,7 @@ static void StartMFD3D12(void)
 {
     wchar_t msg[512];
     if (g_switching) return;
+    if (!CheckFileSelected()) return;
     g_switching = 1;
     EnableButtons(FALSE);
     StopAll();
