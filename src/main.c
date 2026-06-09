@@ -248,7 +248,19 @@ static void StopAll(void)
     d3d11_video_cleanup();
     d3d12_video_cleanup();
     g_currentMode = 0;
-    if (g_hwndDisplay) InvalidateRect(g_hwndDisplay, NULL, TRUE);
+
+    /* Synchronously clear display area to prevent residual frames */
+    if (g_hwndDisplay) {
+        HDC hdc = GetDC(g_hwndDisplay);
+        if (hdc) {
+            RECT rc;
+            GetClientRect(g_hwndDisplay, &rc);
+            FillRect(hdc, &rc, (HBRUSH)GetStockObject(BLACK_BRUSH));
+            ReleaseDC(g_hwndDisplay, hdc);
+        }
+        InvalidateRect(g_hwndDisplay, NULL, TRUE);
+        UpdateWindow(g_hwndDisplay);
+    }
     UpdateStatus(L"已停止");
 }
 
@@ -478,22 +490,32 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                     if (hasVid) {
                         double fps = mf_get_video_fps();
                         UINT32 vbr = mf_get_video_bitrate();
-                        if (fps > 0 && vbr > 0) {
-                            swprintf(msg, 512, L"MF %ls | %ls %dx%d %.1ffps %ukbps | %ls %ukbps | %02d:%02d/%02d:%02d drop %d/%d",
-                                     hwTag, mf_get_video_codec(), mf_get_width(), mf_get_height(), fps, vbr / 1000,
-                                     mf_get_audio_codec(), mf_get_audio_bitrate() / 1000,
+                        UINT32 abr = mf_get_audio_bitrate();
+                        /* Build video part */
+                        wchar_t vidPart[128] = {0};
+                        if (fps > 0 && vbr > 0)
+                            swprintf(vidPart, 128, L"%ls %dx%d %.1ffps %ukbps", mf_get_video_codec(), mf_get_width(), mf_get_height(), fps, vbr / 1000);
+                        else if (fps > 0)
+                            swprintf(vidPart, 128, L"%ls %dx%d %.1ffps", mf_get_video_codec(), mf_get_width(), mf_get_height(), fps);
+                        else
+                            swprintf(vidPart, 128, L"%ls %dx%d", mf_get_video_codec(), mf_get_width(), mf_get_height());
+                        /* Build audio part */
+                        wchar_t audPart[64] = {0};
+                        if (hasAud && abr > 0)
+                            swprintf(audPart, 64, L"%ls %ukbps", mf_get_audio_codec(), abr / 1000);
+                        else if (hasAud)
+                            swprintf(audPart, 64, L"%ls", mf_get_audio_codec());
+                        /* Combine */
+                        if (audPart[0])
+                            swprintf(msg, 512, L"MF %ls | %ls | %ls | %02d:%02d/%02d:%02d drop %d/%d",
+                                     hwTag, vidPart, audPart,
                                      (int)pos / 60, (int)pos % 60, (int)dur / 60, (int)dur % 60,
                                      mf_get_dropped_frames(), mf_get_total_frames());
-                        } else if (fps > 0) {
-                            swprintf(msg, 512, L"MF %ls | %ls %dx%d %.1ffps | %02d:%02d/%02d:%02d drop %d/%d",
-                                     hwTag, mf_get_video_codec(), mf_get_width(), mf_get_height(), fps,
+                        else
+                            swprintf(msg, 512, L"MF %ls | %ls | %02d:%02d/%02d:%02d drop %d/%d",
+                                     hwTag, vidPart,
                                      (int)pos / 60, (int)pos % 60, (int)dur / 60, (int)dur % 60,
                                      mf_get_dropped_frames(), mf_get_total_frames());
-                        } else {
-                            swprintf(msg, 512, L"MF %ls | %ls %dx%d | %02d:%02d/%02d:%02d",
-                                     hwTag, mf_get_video_codec(), mf_get_width(), mf_get_height(),
-                                     (int)pos / 60, (int)pos % 60, (int)dur / 60, (int)dur % 60);
-                        }
                     } else if (hasAud) {
                         UINT32 abr = mf_get_audio_bitrate();
                         if (abr > 0) {

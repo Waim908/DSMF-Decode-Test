@@ -135,8 +135,8 @@ static void mf_subtype_to_name(const GUID *subtype, wchar_t *name, int name_len)
     if (IsEqualGUID(subtype, &MFAudioFormat_Dolby_DDPlus)) { wcscpy_s(name, name_len, L"E-AC3"); return; }
     if (IsEqualGUID(subtype, &MFAudioFormat_Vorbis))     { wcscpy_s(name, name_len, L"Vorbis"); return; }
     /* MFAudioFormat_FLAC, MFAudioFormat_Opus, MFAudioFormat_DTS not available in MinGW */
-    /* Fallback: show GUID */
-    swprintf(name, name_len, L"{%08X-...}", subtype->Data1);
+    /* Fallback: unknown codec */
+    wcscpy_s(name, name_len, L"未知编码");
 }
 
 static void mf_cleanup_internals(void)
