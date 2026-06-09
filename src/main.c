@@ -14,6 +14,7 @@
 #include "directshow_decoder.h"
 #include "mf_decoder.h"
 #include "dxva2_helper.h"
+#include "d3d11_video_helper.h"
 
 /* Window class names */
 static const wchar_t CLASS_NAME[] = L"VideoDecoderTestClass";
@@ -25,12 +26,13 @@ static HWND g_hwndDisplay    = NULL;
 static HWND g_hwndBtnDS      = NULL;
 static HWND g_hwndBtnMF      = NULL;
 static HWND g_hwndBtnDxva2   = NULL;
+static HWND g_hwndBtnD3D11   = NULL;
 static HWND g_hwndBtnStop    = NULL;
 static HWND g_hwndStatus     = NULL;
 static HFONT g_hFont         = NULL;
 
 /* Current state */
-static int   g_currentMode   = 0;  /* 0=none, 1=DS, 2=MF, 3=MF+DXVA2 */
+static int   g_currentMode   = 0;  /* 0=none, 1=DS, 2=MF, 3=MF+DXVA2, 4=MF+D3D11 */
 static int   g_renderTimerActive = 0;
 static wchar_t g_filePath[MAX_PATH] = {0};
 
@@ -44,6 +46,7 @@ static void UpdateStatus(const wchar_t *msg);
 static void StartDirectShow(void);
 static void StartMFSoftware(void);
 static void StartMFDXVA2(void);
+static void StartMFD3D11(void);
 static void StopAll(void);
 static void ResizeControls(HWND hwnd);
 static int  OpenFileDialog(HWND hwnd, wchar_t *path, int path_len);
@@ -175,6 +178,12 @@ static void CreateControls(HWND hwnd)
         NULL, NULL);
     x += btn_w + 20 + btn_gap;
 
+    g_hwndBtnD3D11 = CreateWindowW(L"BUTTON", L"MF + D3D11 硬件加速",
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+        x, btn_y, btn_w + 20, btn_h, hwnd, (HMENU)(UINT_PTR)IDC_BTN_MF_D3D11,
+        NULL, NULL);
+    x += btn_w + 20 + btn_gap;
+
     g_hwndBtnStop = CreateWindowW(L"BUTTON", L"停止",
         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
         x, btn_y, 80, btn_h, hwnd, (HMENU)(UINT_PTR)IDC_BTN_STOP,
@@ -209,6 +218,7 @@ static void CreateControls(HWND hwnd)
         SendMessageW(g_hwndBtnDS,    WM_SETFONT, (WPARAM)g_hFont, TRUE);
         SendMessageW(g_hwndBtnMF,    WM_SETFONT, (WPARAM)g_hFont, TRUE);
         SendMessageW(g_hwndBtnDxva2, WM_SETFONT, (WPARAM)g_hFont, TRUE);
+        SendMessageW(g_hwndBtnD3D11, WM_SETFONT, (WPARAM)g_hFont, TRUE);
         SendMessageW(g_hwndBtnStop,  WM_SETFONT, (WPARAM)g_hFont, TRUE);
     }
 }
@@ -255,6 +265,7 @@ static void StopAll(void)
     ds_stop();
     mf_stop();
     dxva2_cleanup();
+    d3d11_video_cleanup();
     g_currentMode = 0;
 
     /* Clear display */
@@ -352,6 +363,42 @@ static void StartMFDXVA2(void)
     g_renderTimerActive = 1;
 }
 
+/* Start Media Foundation + D3D11 hardware acceleration */
+static void StartMFD3D11(void)
+{
+    wchar_t msg[512];
+
+    StopAll();
+
+    UpdateStatus(L"Media Foundation + D3D11: 正在初始化...");
+
+    /* Check D3D11 support */
+    if (!d3d11_video_check_support()) {
+        UpdateStatus(L"D3D11: 硬件加速不可用，将使用软件解码");
+    }
+
+    /* Initialize D3D11 device */
+    if (d3d11_video_init(g_hwndDisplay, 1920, 1080) != 0) {
+        UpdateStatus(L"D3D11: 设备初始化失败，将使用软件解码");
+    }
+
+    int ret = mf_open(g_filePath, g_hwndDisplay, 2);  /* mode 2 = D3D11 */
+    if (ret != 0) {
+        swprintf(msg, 512, L"MF+D3D11: 打开失败 - %ls", g_filePath);
+        UpdateStatus(msg);
+        MessageBoxW(g_hwndMain, msg, L"错误", MB_OK | MB_ICONERROR);
+        return;
+    }
+
+    g_currentMode = 4;
+    swprintf(msg, 512, L"Media Foundation + D3D11: %ls", mf_get_decoder_info());
+    UpdateStatus(msg);
+
+    /* Start timer for frame rendering */
+    SetTimer(g_hwndMain, TIMER_RENDER, 33, NULL);  /* ~30fps */
+    g_renderTimerActive = 1;
+}
+
 /* Open file dialog */
 static int OpenFileDialog(HWND hwnd, wchar_t *path, int path_len)
 {
@@ -392,6 +439,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         case IDC_BTN_MF_DXVA2:
             StartMFDXVA2();
             break;
+        case IDC_BTN_MF_D3D11:
+            StartMFD3D11();
+            break;
         case IDC_BTN_STOP:
             StopAll();
             break;
@@ -418,7 +468,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                              ds_get_position(), ds_get_duration());
                     UpdateStatus(msg);
                 }
-            } else if (g_currentMode == 2 || g_currentMode == 3) {
+            } else if (g_currentMode == 2 || g_currentMode == 3 || g_currentMode == 4) {
                 /* Media Foundation - render next frame */
                 int ret = mf_render_next_frame();
                 if (ret == 1) {

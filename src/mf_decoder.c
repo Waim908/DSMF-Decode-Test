@@ -4,6 +4,7 @@
  */
 #include "mf_decoder.h"
 #include "dxva2_helper.h"
+#include "d3d11_video_helper.h"
 
 #include <windows.h>
 #include <mmsystem.h>
@@ -13,6 +14,7 @@
 #include <mfobjects.h>
 #include <d3d9.h>
 #include <dxva2api.h>
+#include <d3d11.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -25,7 +27,7 @@
 static IMFSourceReader     *g_reader     = NULL;
 static HWND                 g_hwnd       = NULL;
 static int                  g_active     = 0;
-static int                  g_dxva2      = 0;
+static int                  g_dxva2      = 0;  /* 0=software, 1=DXVA2, 2=D3D11 */
 static int                  g_eof        = 0;
 static int                  g_width      = 0;
 static int                  g_height     = 0;
@@ -37,6 +39,11 @@ static GUID                 g_subtype    = {0};
 static int                  g_dxva2_initialized = 0;
 static IDirect3DSurface9   *g_dxva2_surface     = NULL;
 static int                  g_dxva2_use_hw_render = 0;
+
+/* D3D11 hardware acceleration state */
+static int                  g_d3d11_initialized = 0;
+static ID3D11Texture2D     *g_d3d11_texture     = NULL;
+static int                  g_d3d11_use_hw_render = 0;
 
 /* Frame timing */
 static LONGLONG             g_startTime  = 0;  /* QPC start time */
@@ -124,6 +131,18 @@ static void mf_cleanup_internals(void)
         g_dxva2_initialized = 0;
     }
     g_dxva2_use_hw_render = 0;
+
+    /* Cleanup D3D11 resources */
+    if (g_d3d11_texture) {
+        g_d3d11_texture->lpVtbl->Release(g_d3d11_texture);
+        g_d3d11_texture = NULL;
+    }
+    if (g_d3d11_initialized) {
+        d3d11_video_decoder_cleanup();
+        d3d11_video_processor_cleanup();
+        g_d3d11_initialized = 0;
+    }
+    g_d3d11_use_hw_render = 0;
 
     g_active = 0;
     g_eof    = 0;
@@ -343,8 +362,9 @@ int mf_open(const wchar_t *filepath, HWND hwnd_display, int enable_dxva2)
         fprintf(stdout, "MF: Video %dx%d stride=%d\n", g_width, g_height, g_stride);
     }
 
-    /* Initialize DXVA2 hardware acceleration if requested */
-    if (enable_dxva2 && g_width > 0 && g_height > 0) {
+    /* Initialize hardware acceleration if requested */
+    if (enable_dxva2 == 1 && g_width > 0 && g_height > 0) {
+        /* DXVA2 mode */
         fprintf(stdout, "MF: Initializing DXVA2 hardware acceleration...\n");
 
         /* Initialize DXVA2 device */
@@ -374,6 +394,38 @@ int mf_open(const wchar_t *filepath, HWND hwnd_display, int enable_dxva2)
             }
         } else {
             fprintf(stderr, "MF: DXVA2 device init failed, falling back to software\n");
+        }
+    } else if (enable_dxva2 == 2 && g_width > 0 && g_height > 0) {
+        /* D3D11 mode */
+        fprintf(stdout, "MF: Initializing D3D11 hardware acceleration...\n");
+
+        /* Initialize D3D11 device */
+        if (d3d11_video_init(hwnd_display, g_width, g_height) == 0) {
+            /* Configure D3D11 decoder */
+            D3D11VideoDecoderConfig decoder_config;
+            ZeroMemory(&decoder_config, sizeof(decoder_config));
+
+            /* H.264 decoder profile */
+            decoder_config.guid = (GUID){0x1b81be68, 0xa0c7, 0x11d3, {0xb9, 0x84, 0x00, 0xc0, 0x4f, 0x2e, 0x73, 0xc5}};
+            decoder_config.width = g_width;
+            decoder_config.height = g_height;
+            decoder_config.num_surfaces = 8;
+
+            if (d3d11_video_decoder_init(&decoder_config) == 0) {
+                /* Initialize video processor for rendering */
+                if (d3d11_video_processor_init() == 0) {
+                    g_d3d11_initialized = 1;
+                    g_d3d11_use_hw_render = 1;
+                    fprintf(stdout, "MF: D3D11 hardware acceleration enabled\n");
+                } else {
+                    fprintf(stderr, "MF: D3D11 processor init failed, falling back to software\n");
+                    d3d11_video_decoder_cleanup();
+                }
+            } else {
+                fprintf(stderr, "MF: D3D11 decoder init failed, falling back to software\n");
+            }
+        } else {
+            fprintf(stderr, "MF: D3D11 device init failed, falling back to software\n");
         }
     }
 
@@ -658,9 +710,9 @@ int mf_render_next_frame(void)
     hr = IMFMediaBuffer_Lock(buffer, &data, &buf_len, NULL);
     if (FAILED(hr)) { IMFMediaBuffer_Release(buffer); IMFSample_Release(sample); return -1; }
 
-    /* Use DXVA2 hardware rendering if available */
+    /* Use hardware rendering if available */
     if (g_dxva2_use_hw_render && g_dxva2_initialized) {
-        /* Upload frame to DXVA2 surface */
+        /* DXVA2 hardware rendering */
         if (g_dxva2_surface == NULL) {
             g_dxva2_surface = dxva2_create_surface(g_width, g_height, D3DFMT_NV12);
         }
@@ -670,6 +722,25 @@ int mf_render_next_frame(void)
             if (dxva2_upload_surface(g_dxva2_surface, data, g_stride, D3DFMT_NV12) == 0) {
                 /* Use video processor to render */
                 dxva2_processor_render(g_dxva2_surface, NULL, NULL);
+            } else {
+                /* Fallback to software rendering */
+                mf_render_frame(data, g_stride, g_width, g_height, g_hwnd);
+            }
+        } else {
+            /* Fallback to software rendering */
+            mf_render_frame(data, g_stride, g_width, g_height, g_hwnd);
+        }
+    } else if (g_d3d11_use_hw_render && g_d3d11_initialized) {
+        /* D3D11 hardware rendering */
+        if (g_d3d11_texture == NULL) {
+            g_d3d11_texture = d3d11_video_create_texture(g_width, g_height, DXGI_FORMAT_NV12);
+        }
+
+        if (g_d3d11_texture) {
+            /* Upload NV12 data to D3D11 texture */
+            if (d3d11_video_upload_texture(g_d3d11_texture, data, g_stride, DXGI_FORMAT_NV12) == 0) {
+                /* Use video processor to render */
+                d3d11_video_processor_render(g_d3d11_texture, NULL, NULL);
             } else {
                 /* Fallback to software rendering */
                 mf_render_frame(data, g_stride, g_width, g_height, g_hwnd);
@@ -701,7 +772,7 @@ void mf_stop(void)
 int mf_is_active(void) { return (g_active && !g_eof) ? 1 : 0; }
 long long mf_get_position(void) { return 0; }
 long long mf_get_duration(void) { return g_duration; }
-int mf_is_using_dxva2(void) { return g_dxva2_initialized; }
+int mf_is_using_dxva2(void) { return g_dxva2_initialized || g_d3d11_initialized; }
 
 const wchar_t *mf_get_decoder_info(void)
 {
@@ -709,6 +780,9 @@ const wchar_t *mf_get_decoder_info(void)
     if (g_active) {
         if (g_dxva2_initialized) {
             swprintf(info, 256, L"Media Foundation + DXVA2 %dx%d (dropped %d/%d)",
+                     g_width, g_height, g_droppedFrames, g_frameCount);
+        } else if (g_d3d11_initialized) {
+            swprintf(info, 256, L"Media Foundation + D3D11 %dx%d (dropped %d/%d)",
                      g_width, g_height, g_droppedFrames, g_frameCount);
         } else {
             swprintf(info, 256, L"Media Foundation %dx%d (dropped %d/%d)",
