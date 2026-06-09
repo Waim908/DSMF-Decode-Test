@@ -7,6 +7,11 @@
 #include <dshow.h>
 #include <stdio.h>
 
+/* CLSID_EnhancedVideoRenderer may not be in dshow.h */
+#ifndef CLSID_EnhancedVideoRenderer
+static const CLSID CLSID_EnhancedVideoRenderer = {0xfa10746c, 0x9b63, 0x4b6c, {0xbc, 0x49, 0xfc, 0x30, 0x0e, 0xa5, 0xf2, 0x56}};
+#endif
+
 static IGraphBuilder    *pGraph    = NULL;
 static IMediaControl    *pControl  = NULL;
 static IMediaEvent      *pEvent    = NULL;
@@ -15,6 +20,7 @@ static IBasicVideo      *pBasicVideo = NULL;
 static IBasicAudio      *pAudio    = NULL;
 static IMediaSeeking    *pSeeking  = NULL;
 static int               g_playing = 0;
+static int               g_dxva2   = 0;
 static HWND              g_hwndDisplay = NULL;
 static int               g_video_w = 0;
 static int               g_video_h = 0;
@@ -40,6 +46,7 @@ static void ds_cleanup(void)
     g_video_w = 0;
     g_video_h = 0;
     g_playing = 0;
+    g_dxva2 = 0;
 }
 
 int ds_open(const wchar_t *filepath, HWND hwnd_display)
@@ -86,6 +93,124 @@ int ds_open(const wchar_t *filepath, HWND hwnd_display)
     }
 
     if (pSource) IBaseFilter_Release(pSource);
+
+    /* Embed video window into our display area */
+    if (hwnd_display && pVideo) {
+        g_hwndDisplay = hwnd_display;
+
+        IVideoWindow_put_Owner(pVideo, (OAHWND)hwnd_display);
+        IVideoWindow_put_WindowStyle(pVideo, WS_CHILD | WS_CLIPSIBLINGS | WS_CLIPCHILDREN);
+        IVideoWindow_put_MessageDrain(pVideo, (OAHWND)hwnd_display);
+        IVideoWindow_put_AutoShow(pVideo, OAFALSE);
+
+        /* Get native video size from IBasicVideo */
+        g_video_w = 0;
+        g_video_h = 0;
+        if (pBasicVideo) {
+            long vw = 0, vh = 0;
+            IBasicVideo_get_SourceWidth(pBasicVideo, &vw);
+            IBasicVideo_get_SourceHeight(pBasicVideo, &vh);
+            if (vw > 0 && vh > 0) {
+                g_video_w = vw;
+                g_video_h = vh;
+                fprintf(stdout, "DirectShow: Native video size %ldx%ld\n", vw, vh);
+            }
+        }
+
+        /* Fit video to display area with aspect ratio */
+        ds_update_aspect();
+        IVideoWindow_put_Visible(pVideo, OATRUE);
+    }
+
+    g_playing = 0;
+    return 0;
+}
+
+int ds_open_dxva2(const wchar_t *filepath, HWND hwnd_display, int enable_dxva2)
+{
+    HRESULT hr;
+    IBaseFilter *pSource = NULL;
+    IBaseFilter *pRenderer = NULL;
+
+    ds_cleanup();
+
+    /* Create the Filter Graph Manager */
+    hr = CoCreateInstance(&CLSID_FilterGraph, NULL, CLSCTX_INPROC_SERVER,
+                          &IID_IGraphBuilder, (void **)&pGraph);
+    if (FAILED(hr)) { fprintf(stderr, "DirectShow: Failed to create FilterGraph: 0x%08lx\n", hr); return -1; }
+
+    /* Query interfaces */
+    IGraphBuilder_QueryInterface(pGraph, &IID_IMediaControl, (void **)&pControl);
+    IGraphBuilder_QueryInterface(pGraph, &IID_IMediaEvent,   (void **)&pEvent);
+    IGraphBuilder_QueryInterface(pGraph, &IID_IVideoWindow,  (void **)&pVideo);
+    IGraphBuilder_QueryInterface(pGraph, &IID_IBasicVideo,   (void **)&pBasicVideo);
+    IGraphBuilder_QueryInterface(pGraph, &IID_IBasicAudio,   (void **)&pAudio);
+    IGraphBuilder_QueryInterface(pGraph, &IID_IMediaSeeking, (void **)&pSeeking);
+
+    if (!pControl || !pVideo) {
+        fprintf(stderr, "DirectShow: Failed to query required interfaces\n");
+        ds_cleanup();
+        return -1;
+    }
+
+    /* Add source filter for the file */
+    hr = IGraphBuilder_AddSourceFilter(pGraph, filepath, L"Source", &pSource);
+    if (FAILED(hr)) {
+        fprintf(stderr, "DirectShow: Failed to add source filter for '%ls': 0x%08lx\n", filepath, hr);
+        ds_cleanup();
+        return -1;
+    }
+
+    if (enable_dxva2) {
+        /* Try to use VMR-9 first (supports DXVA2) */
+        hr = CoCreateInstance(&CLSID_VideoMixingRenderer9, NULL, CLSCTX_INPROC_SERVER,
+                              &IID_IBaseFilter, (void **)&pRenderer);
+        if (SUCCEEDED(hr)) {
+            hr = IGraphBuilder_AddFilter(pGraph, pRenderer, L"VMR-9");
+            if (SUCCEEDED(hr)) {
+                fprintf(stdout, "DirectShow: Using VMR-9 renderer (DXVA2 capable)\n");
+                g_dxva2 = 1;
+            } else {
+                fprintf(stderr, "DirectShow: Failed to add VMR-9 filter: 0x%08lx\n", hr);
+                IBaseFilter_Release(pRenderer);
+                pRenderer = NULL;
+            }
+        } else {
+            fprintf(stderr, "DirectShow: Failed to create VMR-9: 0x%08lx\n", hr);
+        }
+
+        /* If VMR-9 failed, try EVR */
+        if (!pRenderer) {
+            hr = CoCreateInstance(&CLSID_EnhancedVideoRenderer, NULL, CLSCTX_INPROC_SERVER,
+                                  &IID_IBaseFilter, (void **)&pRenderer);
+            if (SUCCEEDED(hr)) {
+                hr = IGraphBuilder_AddFilter(pGraph, pRenderer, L"EVR");
+                if (SUCCEEDED(hr)) {
+                    fprintf(stdout, "DirectShow: Using EVR renderer (DXVA2 capable)\n");
+                    g_dxva2 = 1;
+                } else {
+                    fprintf(stderr, "DirectShow: Failed to add EVR filter: 0x%08lx\n", hr);
+                    IBaseFilter_Release(pRenderer);
+                    pRenderer = NULL;
+                }
+            } else {
+                fprintf(stderr, "DirectShow: Failed to create EVR: 0x%08lx\n", hr);
+            }
+        }
+    }
+
+    /* Render all output pins (auto-connects decoder + renderer) */
+    hr = IGraphBuilder_RenderFile(pGraph, filepath, NULL);
+    if (FAILED(hr)) {
+        fprintf(stderr, "DirectShow: RenderFile failed: 0x%08lx\n", hr);
+        if (pSource) IBaseFilter_Release(pSource);
+        if (pRenderer) IBaseFilter_Release(pRenderer);
+        ds_cleanup();
+        return -1;
+    }
+
+    if (pSource) IBaseFilter_Release(pSource);
+    if (pRenderer) IBaseFilter_Release(pRenderer);
 
     /* Embed video window into our display area */
     if (hwnd_display && pVideo) {
@@ -212,4 +337,9 @@ void ds_resize(int x, int y, int w, int h)
         /* No native size info, fill window */
         IVideoWindow_SetWindowPosition(pVideo, x, y, w, h);
     }
+}
+
+int ds_is_using_dxva2(void)
+{
+    return g_dxva2;
 }

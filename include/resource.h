@@ -6,6 +6,7 @@
 #define IDC_BTN_MF_SOFTWARE     1002
 #define IDC_BTN_MF_DXVA2        1003
 #define IDC_BTN_MF_D3D11        1006
+#define IDC_BTN_DS_DXVA2        1007
 #define IDC_BTN_STOP            1004
 #define IDC_BTN_OPEN_FILE       1005
 

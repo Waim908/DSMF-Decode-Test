@@ -24,6 +24,7 @@ static const wchar_t WINDOW_TITLE[] = L"DirectShowMediaFoundationDecodeTest";
 static HWND g_hwndMain       = NULL;
 static HWND g_hwndDisplay    = NULL;
 static HWND g_hwndBtnDS      = NULL;
+static HWND g_hwndBtnDSDxva2 = NULL;
 static HWND g_hwndBtnMF      = NULL;
 static HWND g_hwndBtnDxva2   = NULL;
 static HWND g_hwndBtnD3D11   = NULL;
@@ -32,7 +33,7 @@ static HWND g_hwndStatus     = NULL;
 static HFONT g_hFont         = NULL;
 
 /* Current state */
-static int   g_currentMode   = 0;  /* 0=none, 1=DS, 2=MF, 3=MF+DXVA2, 4=MF+D3D11 */
+static int   g_currentMode   = 0;  /* 0=none, 1=DS, 2=MF, 3=MF+DXVA2, 4=MF+D3D11, 5=DS+DXVA2 */
 static int   g_renderTimerActive = 0;
 static wchar_t g_filePath[MAX_PATH] = {0};
 
@@ -44,6 +45,7 @@ static LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 static void CreateControls(HWND hwnd);
 static void UpdateStatus(const wchar_t *msg);
 static void StartDirectShow(void);
+static void StartDirectShowDXVA2(void);
 static void StartMFSoftware(void);
 static void StartMFDXVA2(void);
 static void StartMFD3D11(void);
@@ -166,6 +168,12 @@ static void CreateControls(HWND hwnd)
         NULL, NULL);
     x += btn_w + btn_gap;
 
+    g_hwndBtnDSDxva2 = CreateWindowW(L"BUTTON", L"DS + DXVA2 硬件加速",
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+        x, btn_y, btn_w + 20, btn_h, hwnd, (HMENU)(UINT_PTR)IDC_BTN_DS_DXVA2,
+        NULL, NULL);
+    x += btn_w + 20 + btn_gap;
+
     g_hwndBtnMF = CreateWindowW(L"BUTTON", L"MF 软件解码",
         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
         x, btn_y, btn_w, btn_h, hwnd, (HMENU)(UINT_PTR)IDC_BTN_MF_SOFTWARE,
@@ -215,11 +223,12 @@ static void CreateControls(HWND hwnd)
 
     /* Apply font */
     if (g_hFont) {
-        SendMessageW(g_hwndBtnDS,    WM_SETFONT, (WPARAM)g_hFont, TRUE);
-        SendMessageW(g_hwndBtnMF,    WM_SETFONT, (WPARAM)g_hFont, TRUE);
-        SendMessageW(g_hwndBtnDxva2, WM_SETFONT, (WPARAM)g_hFont, TRUE);
-        SendMessageW(g_hwndBtnD3D11, WM_SETFONT, (WPARAM)g_hFont, TRUE);
-        SendMessageW(g_hwndBtnStop,  WM_SETFONT, (WPARAM)g_hFont, TRUE);
+        SendMessageW(g_hwndBtnDS,      WM_SETFONT, (WPARAM)g_hFont, TRUE);
+        SendMessageW(g_hwndBtnDSDxva2, WM_SETFONT, (WPARAM)g_hFont, TRUE);
+        SendMessageW(g_hwndBtnMF,      WM_SETFONT, (WPARAM)g_hFont, TRUE);
+        SendMessageW(g_hwndBtnDxva2,   WM_SETFONT, (WPARAM)g_hFont, TRUE);
+        SendMessageW(g_hwndBtnD3D11,   WM_SETFONT, (WPARAM)g_hFont, TRUE);
+        SendMessageW(g_hwndBtnStop,    WM_SETFONT, (WPARAM)g_hFont, TRUE);
     }
 }
 
@@ -300,6 +309,42 @@ static void StartDirectShow(void)
 
     g_currentMode = 1;
     swprintf(msg, 512, L"DirectShow: 正在播放 %ls", g_filePath);
+    UpdateStatus(msg);
+
+    /* Start timer to monitor playback status */
+    SetTimer(g_hwndMain, TIMER_RENDER, 100, NULL);
+    g_renderTimerActive = 1;
+}
+
+/* Start DirectShow with DXVA2 hardware acceleration */
+static void StartDirectShowDXVA2(void)
+{
+    wchar_t msg[512];
+
+    StopAll();
+
+    UpdateStatus(L"DirectShow + DXVA2: 正在打开...");
+    int ret = ds_open_dxva2(g_filePath, g_hwndDisplay, 1);
+    if (ret != 0) {
+        swprintf(msg, 512, L"DirectShow + DXVA2: 打开失败 - %ls", g_filePath);
+        UpdateStatus(msg);
+        MessageBoxW(g_hwndMain, msg, L"错误", MB_OK | MB_ICONERROR);
+        return;
+    }
+
+    ret = ds_play();
+    if (ret != 0) {
+        UpdateStatus(L"DirectShow + DXVA2: 播放失败");
+        ds_stop();
+        return;
+    }
+
+    g_currentMode = 5;
+    if (ds_is_using_dxva2()) {
+        swprintf(msg, 512, L"DirectShow + DXVA2: 正在播放 %ls (硬件加速)", g_filePath);
+    } else {
+        swprintf(msg, 512, L"DirectShow + DXVA2: 正在播放 %ls (软件回退)", g_filePath);
+    }
     UpdateStatus(msg);
 
     /* Start timer to monitor playback status */
@@ -433,6 +478,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         case IDC_BTN_DIRECTSHOW:
             StartDirectShow();
             break;
+        case IDC_BTN_DS_DXVA2:
+            StartDirectShowDXVA2();
+            break;
         case IDC_BTN_MF_SOFTWARE:
             StartMFSoftware();
             break;
@@ -457,15 +505,24 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
 
     case WM_TIMER:
         if (wParam == TIMER_RENDER) {
-            if (g_currentMode == 1) {
+            if (g_currentMode == 1 || g_currentMode == 5) {
                 /* DirectShow - check if still playing */
                 if (!ds_is_playing()) {
                     StopAll();
-                    UpdateStatus(L"DirectShow: 播放完成");
+                    if (g_currentMode == 5) {
+                        UpdateStatus(L"DirectShow + DXVA2: 播放完成");
+                    } else {
+                        UpdateStatus(L"DirectShow: 播放完成");
+                    }
                 } else {
                     wchar_t msg[256];
-                    swprintf(msg, 256, L"DirectShow: %.1f / %.1f 秒",
-                             ds_get_position(), ds_get_duration());
+                    if (g_currentMode == 5) {
+                        swprintf(msg, 256, L"DirectShow + DXVA2: %.1f / %.1f 秒",
+                                 ds_get_position(), ds_get_duration());
+                    } else {
+                        swprintf(msg, 256, L"DirectShow: %.1f / %.1f 秒",
+                                 ds_get_position(), ds_get_duration());
+                    }
                     UpdateStatus(msg);
                 }
             } else if (g_currentMode == 2 || g_currentMode == 3 || g_currentMode == 4) {
