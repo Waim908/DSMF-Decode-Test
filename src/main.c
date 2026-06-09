@@ -15,6 +15,7 @@
 #include "mf_decoder.h"
 #include "dxva2_helper.h"
 #include "d3d11_video_helper.h"
+#include "d3d12_video_helper.h"
 
 /* Window class names */
 static const wchar_t CLASS_NAME[] = L"VideoDecoderTestClass";
@@ -26,7 +27,8 @@ static const wchar_t WINDOW_TITLE[] = L"DirectShowMediaFoundationDecodeTest";
 #define BTN_PAD     8
 #define ROW1_Y      BTN_PAD
 #define ROW2_Y      (BTN_PAD + BTN_H + BTN_GAP)
-#define TOOLBAR_H   (BTN_PAD + BTN_H + BTN_GAP + BTN_H + BTN_PAD)
+#define ROW3_Y      (BTN_PAD + BTN_H + BTN_GAP + BTN_H + BTN_GAP)
+#define TOOLBAR_H   (BTN_PAD + BTN_H + BTN_GAP + BTN_H + BTN_GAP + BTN_H + BTN_PAD)
 
 /* Global controls */
 static HWND g_hwndMain       = NULL;
@@ -35,6 +37,7 @@ static HWND g_hwndBtnDSDxva2 = NULL;
 static HWND g_hwndBtnMF      = NULL;
 static HWND g_hwndBtnDxva2   = NULL;
 static HWND g_hwndBtnD3D11   = NULL;
+static HWND g_hwndBtnD3D12   = NULL;
 static HWND g_hwndBtnStop    = NULL;
 static HWND g_hwndBtnOpen    = NULL;
 static HWND g_hwndDisplay    = NULL;
@@ -59,6 +62,7 @@ static void StartDirectShowDXVA2(void);
 static void StartMFSoftware(void);
 static void StartMFDXVA2(void);
 static void StartMFD3D11(void);
+static void StartMFD3D12(void);
 static void StopAll(void);
 static void ResizeControls(HWND hwnd);
 static int  OpenFileDialog(HWND hwnd, wchar_t *path, int path_len);
@@ -161,24 +165,28 @@ static void CreateControls(HWND hwnd)
                           DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                           CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
 
-    /* Row 1: decode methods */
+    /* Row 1: DirectShow methods */
     int bw = 140;
     int x = BTN_PAD;
     g_hwndBtnDS      = MakeButton(hwnd, L"DirectShow 播放",    IDC_BTN_DIRECTSHOW,  x, ROW1_Y, bw);
     x += bw + BTN_GAP;
     g_hwndBtnDSDxva2 = MakeButton(hwnd, L"DS + DXVA2",         IDC_BTN_DS_DXVA2,    x, ROW1_Y, bw);
-    x += bw + BTN_GAP;
-    g_hwndBtnMF      = MakeButton(hwnd, L"MF 软件解码",        IDC_BTN_MF_SOFTWARE, x, ROW1_Y, bw);
-    x += bw + BTN_GAP;
-    g_hwndBtnDxva2   = MakeButton(hwnd, L"MF + DXVA2",         IDC_BTN_MF_DXVA2,    x, ROW1_Y, bw);
-    x += bw + BTN_GAP;
-    g_hwndBtnD3D11   = MakeButton(hwnd, L"MF + D3D11",         IDC_BTN_MF_D3D11,    x, ROW1_Y, bw);
 
-    /* Row 2: control */
+    /* Row 2: Media Foundation methods */
     x = BTN_PAD;
-    g_hwndBtnStop    = MakeButton(hwnd, L"停止播放",           IDC_BTN_STOP,        x, ROW2_Y, 100);
+    g_hwndBtnMF      = MakeButton(hwnd, L"MF 软件解码",        IDC_BTN_MF_SOFTWARE, x, ROW2_Y, bw);
+    x += bw + BTN_GAP;
+    g_hwndBtnDxva2   = MakeButton(hwnd, L"MF + DXVA2",         IDC_BTN_MF_DXVA2,    x, ROW2_Y, bw);
+    x += bw + BTN_GAP;
+    g_hwndBtnD3D11   = MakeButton(hwnd, L"MF + D3D11",         IDC_BTN_MF_D3D11,    x, ROW2_Y, bw);
+    x += bw + BTN_GAP;
+    g_hwndBtnD3D12   = MakeButton(hwnd, L"MF + D3D12",         IDC_BTN_MF_D3D12,    x, ROW2_Y, bw);
+
+    /* Row 3: control */
+    x = BTN_PAD;
+    g_hwndBtnStop    = MakeButton(hwnd, L"停止播放",           IDC_BTN_STOP,        x, ROW3_Y, 100);
     x += 100 + BTN_GAP;
-    g_hwndBtnOpen    = MakeButton(hwnd, L"打开文件...",        IDC_BTN_OPEN_FILE,   x, ROW2_Y, 120);
+    g_hwndBtnOpen    = MakeButton(hwnd, L"打开文件...",        IDC_BTN_OPEN_FILE,   x, ROW3_Y, 120);
 
     /* Video display area */
     g_hwndDisplay = CreateWindowExW(
@@ -238,6 +246,7 @@ static void StopAll(void)
     mf_stop();
     dxva2_cleanup();
     d3d11_video_cleanup();
+    d3d12_video_cleanup();
     g_currentMode = 0;
     if (g_hwndDisplay) InvalidateRect(g_hwndDisplay, NULL, TRUE);
     UpdateStatus(L"已停止");
@@ -349,6 +358,29 @@ static void StartMFD3D11(void)
     g_renderTimerActive = 1;
 }
 
+static void StartMFD3D12(void)
+{
+    wchar_t msg[512];
+    StopAll();
+    UpdateStatus(L"Media Foundation + D3D12: 正在初始化...");
+    if (!d3d12_video_check_support())
+        UpdateStatus(L"D3D12: 硬件加速不可用，将使用软件解码");
+    if (d3d12_video_init(g_hwndDisplay, 1920, 1080) != 0)
+        UpdateStatus(L"D3D12: 设备初始化失败，将使用软件解码");
+    int ret = mf_open(g_filePath, g_hwndDisplay, 3);
+    if (ret != 0) {
+        swprintf(msg, 512, L"MF+D3D12: 打开失败 - %ls", g_filePath);
+        UpdateStatus(msg);
+        MessageBoxW(g_hwndMain, msg, L"错误", MB_OK | MB_ICONERROR);
+        return;
+    }
+    g_currentMode = 6;
+    swprintf(msg, 512, L"Media Foundation + D3D12: %ls", mf_get_decoder_info());
+    UpdateStatus(msg);
+    SetTimer(g_hwndMain, TIMER_RENDER, 33, NULL);
+    g_renderTimerActive = 1;
+}
+
 static int OpenFileDialog(HWND hwnd, wchar_t *path, int path_len)
 {
     OPENFILENAMEW ofn;
@@ -383,6 +415,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         case IDC_BTN_MF_SOFTWARE: StartMFSoftware();     break;
         case IDC_BTN_MF_DXVA2:    StartMFDXVA2();        break;
         case IDC_BTN_MF_D3D11:    StartMFD3D11();        break;
+        case IDC_BTN_MF_D3D12:    StartMFD3D12();        break;
         case IDC_BTN_STOP:        StopAll();             break;
         case IDC_BTN_OPEN_FILE:
             if (OpenFileDialog(hwnd, g_filePath, MAX_PATH)) {

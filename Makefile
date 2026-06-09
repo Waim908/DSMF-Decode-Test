@@ -1,4 +1,4 @@
-OBJS=obj/main.o obj/directshow_decoder.o obj/mf_decoder.o obj/dxva2_helper.o obj/d3d11_video_helper.o
+OBJS=obj/main.o obj/directshow_decoder.o obj/mf_decoder.o obj/dxva2_helper.o obj/d3d11_video_helper.o obj/d3d12_video_helper.o
 RES=obj/resource.o
 INCLUDE_DIR=-I./include
 EXE_NAME=DSMF-Decode-Test.exe
@@ -6,7 +6,7 @@ EXE_NAME=DSMF-Decode-Test.exe
 CFLAGS=-O2 -s -std=c99 -DUNICODE -D_UNICODE -DCOBJMACROS -DWINVER=0x0601 -D_WIN32_WINNT=0x0601 -Wall -Wno-unused-variable
 LDFLAGS=-s -mwindows -municode \
     -lstrmiids -lmfplat -lmf -lmfreadwrite -lmfuuid -levr \
-    -ld3d9 -ldxva2 -ld3d11 -ldxgi \
+    -ld3d9 -ldxva2 -ld3d11 -ld3d12 -ldxgi \
     -lcomctl32 -lgdi32 -luser32 -lole32 -luuid -lcomdlg32 -lshlwapi -lwinmm
 
 # Detect OS and set compiler/toolchain accordingly

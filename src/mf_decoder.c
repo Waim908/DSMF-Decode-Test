@@ -5,6 +5,7 @@
 #include "mf_decoder.h"
 #include "dxva2_helper.h"
 #include "d3d11_video_helper.h"
+#include "d3d12_video_helper.h"
 
 #include <windows.h>
 #include <mmsystem.h>
@@ -44,6 +45,11 @@ static int                  g_dxva2_use_hw_render = 0;
 static int                  g_d3d11_initialized = 0;
 static ID3D11Texture2D     *g_d3d11_texture     = NULL;
 static int                  g_d3d11_use_hw_render = 0;
+
+/* D3D12 hardware acceleration state */
+static int                  g_d3d12_initialized = 0;
+static void                *g_d3d12_texture     = NULL;
+static int                  g_d3d12_use_hw_render = 0;
 
 /* Frame timing */
 static LONGLONG             g_startTime  = 0;  /* QPC start time */
@@ -143,6 +149,14 @@ static void mf_cleanup_internals(void)
         g_d3d11_initialized = 0;
     }
     g_d3d11_use_hw_render = 0;
+
+    /* Cleanup D3D12 resources */
+    g_d3d12_texture = NULL;
+    if (g_d3d12_initialized) {
+        d3d12_video_cleanup();
+        g_d3d12_initialized = 0;
+    }
+    g_d3d12_use_hw_render = 0;
 
     g_active = 0;
     g_eof    = 0;
@@ -434,6 +448,36 @@ int mf_open(const wchar_t *filepath, HWND hwnd_display, int enable_dxva2)
             fprintf(stderr, "MF: D3D11 decoder init failed, falling back to software\n");
         }
         d3d11_failed:;
+    } else if (enable_dxva2 == 3 && g_width > 0 && g_height > 0) {
+        /* D3D12 mode */
+        fprintf(stdout, "MF: Initializing D3D12 hardware acceleration...\n");
+
+        /* Check if D3D12 device is already initialized */
+        if (!d3d12_video_is_initialized()) {
+            /* Initialize D3D12 device */
+            if (d3d12_video_init(hwnd_display, g_width, g_height) != 0) {
+                fprintf(stderr, "MF: D3D12 device init failed, falling back to software\n");
+                goto d3d12_failed;
+            }
+        } else {
+            fprintf(stdout, "MF: D3D12 device already initialized, reusing\n");
+        }
+
+        /* Initialize D3D12 video decoder */
+        if (d3d12_video_decoder_init(g_width, g_height) == 0) {
+            /* Initialize video processor for rendering */
+            if (d3d12_video_processor_init() == 0) {
+                g_d3d12_initialized = 1;
+                g_d3d12_use_hw_render = 1;
+                fprintf(stdout, "MF: D3D12 hardware acceleration enabled\n");
+            } else {
+                fprintf(stderr, "MF: D3D12 processor init failed, falling back to software\n");
+                d3d12_video_decoder_cleanup();
+            }
+        } else {
+            fprintf(stderr, "MF: D3D12 decoder init failed, falling back to software\n");
+        }
+        d3d12_failed:;
     }
 
     /* Configure audio */
@@ -756,6 +800,10 @@ int mf_render_next_frame(void)
             /* Fallback to software rendering */
             mf_render_frame(data, g_stride, g_width, g_height, g_hwnd);
         }
+    } else if (g_d3d12_use_hw_render && g_d3d12_initialized) {
+        /* D3D12 hardware rendering - currently uses software fallback due to MinGW limitations */
+        /* TODO: Implement proper D3D12 texture upload when MinGW D3D12 support improves */
+        mf_render_frame(data, g_stride, g_width, g_height, g_hwnd);
     } else {
         /* Software rendering */
         mf_render_frame(data, g_stride, g_width, g_height, g_hwnd);
@@ -790,6 +838,9 @@ const wchar_t *mf_get_decoder_info(void)
                      g_width, g_height, g_droppedFrames, g_frameCount);
         } else if (g_d3d11_initialized) {
             swprintf(info, 256, L"Media Foundation + D3D11 %dx%d (dropped %d/%d)",
+                     g_width, g_height, g_droppedFrames, g_frameCount);
+        } else if (g_d3d12_initialized) {
+            swprintf(info, 256, L"Media Foundation + D3D12 %dx%d (dropped %d/%d)",
                      g_width, g_height, g_droppedFrames, g_frameCount);
         } else {
             swprintf(info, 256, L"Media Foundation %dx%d (dropped %d/%d)",
