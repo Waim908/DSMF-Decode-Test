@@ -39,4 +39,9 @@ void ds_resize(int x, int y, int w, int h);
 /* Check if DXVA2 is being used */
 int ds_is_using_dxva2(void);
 
+/* Media info queries */
+int ds_has_video(void);
+int ds_get_video_width(void);
+int ds_get_video_height(void);
+
 #endif /* DIRECTSHOW_DECODER_H */

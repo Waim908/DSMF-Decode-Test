@@ -51,10 +51,21 @@ static int                  g_d3d12_initialized = 0;
 static void                *g_d3d12_texture     = NULL;
 static int                  g_d3d12_use_hw_render = 0;
 
+/* Media info */
+static wchar_t  g_videoCodec[64]  = {0};
+static wchar_t  g_audioCodec[64]  = {0};
+static UINT32   g_videoBitrate    = 0;
+static UINT32   g_audioBitrate    = 0;
+static UINT32   g_videoFPS_Num    = 0;
+static UINT32   g_videoFPS_Den    = 0;
+static int      g_hasVideo        = 0;
+static int      g_hasAudio        = 0;
+
 /* Frame timing */
 static LONGLONG             g_startTime  = 0;  /* QPC start time */
 static LONGLONG             g_freq       = 0;  /* QPC frequency */
 static LONGLONG             g_firstPts   = 0;  /* First frame PTS */
+static LONGLONG             g_currentPts = 0;  /* Current frame PTS */
 static int                  g_frameCount = 0;
 static int                  g_droppedFrames = 0;
 
@@ -93,6 +104,39 @@ static __inline unsigned char clamp255(int v)
     if (v < 0) return 0;
     if (v > 255) return 255;
     return (unsigned char)v;
+}
+
+/* Convert media subtype GUID to readable name */
+static void mf_subtype_to_name(const GUID *subtype, wchar_t *name, int name_len)
+{
+    /* Video formats */
+    if (IsEqualGUID(subtype, &MFVideoFormat_NV12))       { wcscpy_s(name, name_len, L"NV12"); return; }
+    if (IsEqualGUID(subtype, &MFVideoFormat_YUY2))       { wcscpy_s(name, name_len, L"YUY2"); return; }
+    if (IsEqualGUID(subtype, &MFVideoFormat_RGB32))      { wcscpy_s(name, name_len, L"RGB32"); return; }
+    if (IsEqualGUID(subtype, &MFVideoFormat_ARGB32))     { wcscpy_s(name, name_len, L"ARGB32"); return; }
+    if (IsEqualGUID(subtype, &MFVideoFormat_H264))       { wcscpy_s(name, name_len, L"H.264/AVC"); return; }
+    if (IsEqualGUID(subtype, &MFVideoFormat_H265))       { wcscpy_s(name, name_len, L"H.265/HEVC"); return; }
+    if (IsEqualGUID(subtype, &MFVideoFormat_MJPG))       { wcscpy_s(name, name_len, L"MJPEG"); return; }
+    if (IsEqualGUID(subtype, &MFVideoFormat_MPEG2))      { wcscpy_s(name, name_len, L"MPEG-2"); return; }
+    if (IsEqualGUID(subtype, &MFVideoFormat_VP80))       { wcscpy_s(name, name_len, L"VP8"); return; }
+    if (IsEqualGUID(subtype, &MFVideoFormat_VP90))       { wcscpy_s(name, name_len, L"VP9"); return; }
+    if (IsEqualGUID(subtype, &MFVideoFormat_AV1))        { wcscpy_s(name, name_len, L"AV1"); return; }
+    if (IsEqualGUID(subtype, &MFVideoFormat_M4S2))       { wcscpy_s(name, name_len, L"MPEG-4"); return; }
+    if (IsEqualGUID(subtype, &MFVideoFormat_WMV3))       { wcscpy_s(name, name_len, L"WMV3"); return; }
+    if (IsEqualGUID(subtype, &MFVideoFormat_WVC1))       { wcscpy_s(name, name_len, L"VC-1"); return; }
+    /* Audio formats */
+    if (IsEqualGUID(subtype, &MFAudioFormat_PCM))        { wcscpy_s(name, name_len, L"PCM"); return; }
+    if (IsEqualGUID(subtype, &MFAudioFormat_Float))      { wcscpy_s(name, name_len, L"Float PCM"); return; }
+    if (IsEqualGUID(subtype, &MFAudioFormat_AAC))        { wcscpy_s(name, name_len, L"AAC"); return; }
+    if (IsEqualGUID(subtype, &MFAudioFormat_MP3))        { wcscpy_s(name, name_len, L"MP3"); return; }
+    if (IsEqualGUID(subtype, &MFAudioFormat_WMAudioV8))  { wcscpy_s(name, name_len, L"WMA8"); return; }
+    if (IsEqualGUID(subtype, &MFAudioFormat_WMAudioV9))  { wcscpy_s(name, name_len, L"WMA9"); return; }
+    if (IsEqualGUID(subtype, &MFAudioFormat_Dolby_AC3))  { wcscpy_s(name, name_len, L"AC3"); return; }
+    if (IsEqualGUID(subtype, &MFAudioFormat_Dolby_DDPlus)) { wcscpy_s(name, name_len, L"E-AC3"); return; }
+    if (IsEqualGUID(subtype, &MFAudioFormat_Vorbis))     { wcscpy_s(name, name_len, L"Vorbis"); return; }
+    /* MFAudioFormat_FLAC, MFAudioFormat_Opus, MFAudioFormat_DTS not available in MinGW */
+    /* Fallback: show GUID */
+    swprintf(name, name_len, L"{%08X-...}", subtype->Data1);
 }
 
 static void mf_cleanup_internals(void)
@@ -166,8 +210,19 @@ static void mf_cleanup_internals(void)
     g_stride = 0;
     g_startTime = 0;
     g_firstPts  = 0;
+    g_currentPts = 0;
     g_frameCount = 0;
     g_droppedFrames = 0;
+
+    /* Clear media info */
+    memset(g_videoCodec, 0, sizeof(g_videoCodec));
+    memset(g_audioCodec, 0, sizeof(g_audioCodec));
+    g_videoBitrate = 0;
+    g_audioBitrate = 0;
+    g_videoFPS_Num = 0;
+    g_videoFPS_Den = 0;
+    g_hasVideo = 0;
+    g_hasAudio = 0;
 }
 
 static int mf_init_audio(int channels, int sample_rate, int bits_per_sample)
@@ -363,7 +418,7 @@ int mf_open(const wchar_t *filepath, HWND hwnd_display, int enable_dxva2)
         }
     }
 
-    /* Get video info */
+    /* Get video output info (for dimensions) */
     hr = IMFSourceReader_GetCurrentMediaType(g_reader, (DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, &vtype);
     if (SUCCEEDED(hr)) {
         UINT64 frameSize = 0;
@@ -372,8 +427,32 @@ int mf_open(const wchar_t *filepath, HWND hwnd_display, int enable_dxva2)
         g_height = (int)(frameSize & 0xFFFFFFFF);
         IMFMediaType_GetGUID(vtype, &MF_MT_SUBTYPE, &g_subtype);
         g_stride = mf_get_stride(vtype, g_width);
+        g_hasVideo = 1;
         IMFMediaType_Release(vtype); vtype = NULL;
-        fprintf(stdout, "MF: Video %dx%d stride=%d\n", g_width, g_height, g_stride);
+    }
+
+    /* Get native video media type (original codec before decode) */
+    if (g_hasVideo) {
+        hr = IMFSourceReader_GetNativeMediaType(g_reader, (DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, 0, &vtype);
+        if (SUCCEEDED(hr)) {
+            GUID nativeSubtype = {0};
+            UINT32 bitrate = 0;
+            UINT64 fps = 0;
+            IMFMediaType_GetGUID(vtype, &MF_MT_SUBTYPE, &nativeSubtype);
+            /* Video bitrate */
+            if (SUCCEEDED(IMFMediaType_GetUINT32(vtype, &MF_MT_AVG_BITRATE, &bitrate)))
+                g_videoBitrate = bitrate;
+            /* Frame rate */
+            if (SUCCEEDED(IMFMediaType_GetUINT64(vtype, &MF_MT_FRAME_RATE, &fps))) {
+                g_videoFPS_Num = (UINT32)(fps >> 32);
+                g_videoFPS_Den = (UINT32)(fps & 0xFFFFFFFF);
+            }
+            /* Video codec name from native subtype */
+            mf_subtype_to_name(&nativeSubtype, g_videoCodec, 64);
+            IMFMediaType_Release(vtype); vtype = NULL;
+            fprintf(stdout, "MF: Video %dx%d codec=%ls bitrate=%u fps=%u/%u\n",
+                    g_width, g_height, g_videoCodec, g_videoBitrate, g_videoFPS_Num, g_videoFPS_Den);
+        }
     }
 
     /* Initialize hardware acceleration if requested */
@@ -480,7 +559,21 @@ int mf_open(const wchar_t *filepath, HWND hwnd_display, int enable_dxva2)
         d3d12_failed:;
     }
 
-    /* Configure audio */
+    /* Get native audio info before converting to PCM */
+    hr = IMFSourceReader_GetNativeMediaType(g_reader, (DWORD)MF_SOURCE_READER_FIRST_AUDIO_STREAM, 0, &atype);
+    if (SUCCEEDED(hr)) {
+        GUID audioSubtype;
+        UINT32 abitrate = 0;
+        g_hasAudio = 1;
+        if (SUCCEEDED(IMFMediaType_GetGUID(atype, &MF_MT_SUBTYPE, &audioSubtype)))
+            mf_subtype_to_name(&audioSubtype, g_audioCodec, 64);
+        if (SUCCEEDED(IMFMediaType_GetUINT32(atype, &MF_MT_AVG_BITRATE, &abitrate)))
+            g_audioBitrate = abitrate;
+        fprintf(stdout, "MF: Audio codec=%ls bitrate=%u\n", g_audioCodec, g_audioBitrate);
+        IMFMediaType_Release(atype); atype = NULL;
+    }
+
+    /* Configure audio output to PCM */
     hr = MFCreateMediaType(&atype);
     if (SUCCEEDED(hr)) {
         IMFMediaType_SetGUID(atype, &MF_MT_MAJOR_TYPE, &MFMediaType_Audio);
@@ -710,6 +803,9 @@ int mf_render_next_frame(void)
 
     if (!g_reader || !g_active) return -1;
 
+    /* For audio-only files (no video stream), just return 0 to keep playing */
+    if (g_width == 0 || g_height == 0) return 0;
+
     /* Read video sample with drop-late-frame loop */
     for (;;) {
         hr = IMFSourceReader_ReadSample(g_reader,
@@ -725,6 +821,9 @@ int mf_render_next_frame(void)
         }
         if (flags & MF_SOURCE_READERF_STREAMTICK) return 0;
         if (!sample) return 0;
+
+        /* Update current position */
+        g_currentPts = ts;
 
         if (g_firstPts < 0) g_firstPts = ts;
 
@@ -825,7 +924,11 @@ void mf_stop(void)
 }
 
 int mf_is_active(void) { return (g_active && !g_eof) ? 1 : 0; }
-long long mf_get_position(void) { return 0; }
+long long mf_get_position(void)
+{
+    if (g_firstPts < 0 || g_currentPts < g_firstPts) return 0;
+    return g_currentPts - g_firstPts;
+}
 long long mf_get_duration(void) { return g_duration; }
 int mf_is_using_dxva2(void) { return g_dxva2_initialized || g_d3d11_initialized; }
 
@@ -851,3 +954,22 @@ const wchar_t *mf_get_decoder_info(void)
     }
     return info;
 }
+
+int mf_get_width(void)  { return g_width; }
+int mf_get_height(void) { return g_height; }
+int mf_has_video(void) { return g_hasVideo; }
+int mf_has_audio(void) { return g_hasAudio; }
+
+const wchar_t *mf_get_video_codec(void)  { return g_videoCodec[0] ? g_videoCodec : L"N/A"; }
+const wchar_t *mf_get_audio_codec(void)  { return g_audioCodec[0] ? g_audioCodec : L"N/A"; }
+UINT32 mf_get_video_bitrate(void) { return g_videoBitrate; }
+UINT32 mf_get_audio_bitrate(void) { return g_audioBitrate; }
+
+double mf_get_video_fps(void) {
+    if (g_videoFPS_Num > 0 && g_videoFPS_Den > 0)
+        return (double)g_videoFPS_Num / (double)g_videoFPS_Den;
+    return 0.0;
+}
+
+int mf_get_dropped_frames(void) { return g_droppedFrames; }
+int mf_get_total_frames(void) { return g_frameCount; }

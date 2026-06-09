@@ -430,21 +430,88 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
     case WM_TIMER:
         if (wParam == TIMER_RENDER) {
             if (g_currentMode == 1 || g_currentMode == 5) {
+                /* DirectShow modes */
                 if (!ds_is_playing()) {
                     StopAll();
-                    UpdateStatus(g_currentMode == 5 ?
-                        L"DirectShow + DXVA2: 播放完成" : L"DirectShow: 播放完成");
+                    UpdateStatus(L"DirectShow: 播放完成");
                 } else {
-                    wchar_t msg[256];
-                    swprintf(msg, 256, L"%ls: %.1f / %.1f 秒",
-                             g_currentMode == 5 ? L"DirectShow + DXVA2" : L"DirectShow",
-                             ds_get_position(), ds_get_duration());
+                    double pos = ds_get_position();
+                    double dur = ds_get_duration();
+                    int hasVid = ds_has_video();
+                    wchar_t msg[512];
+                    if (hasVid) {
+                        swprintf(msg, 512, L"DirectShow%s | 视频 %dx%d | %02d:%02d / %02d:%02d",
+                                 g_currentMode == 5 ? L" + DXVA2" : L"",
+                                 ds_get_video_width(), ds_get_video_height(),
+                                 (int)pos / 60, (int)pos % 60,
+                                 (int)dur / 60, (int)dur % 60);
+                    } else {
+                        swprintf(msg, 512, L"DirectShow%s | 纯音频 | %02d:%02d / %02d:%02d",
+                                 g_currentMode == 5 ? L" + DXVA2" : L"",
+                                 (int)pos / 60, (int)pos % 60,
+                                 (int)dur / 60, (int)dur % 60);
+                    }
                     UpdateStatus(msg);
                 }
-            } else if (g_currentMode == 2 || g_currentMode == 3 || g_currentMode == 4) {
+            } else if (g_currentMode == 2 || g_currentMode == 3 || g_currentMode == 4 || g_currentMode == 6) {
+                /* Media Foundation modes */
                 int ret = mf_render_next_frame();
-                if (ret == 1)      { StopAll(); UpdateStatus(L"Media Foundation: 播放完成"); }
-                else if (ret == -1) { StopAll(); UpdateStatus(L"Media Foundation: 解码错误"); }
+                if (ret == 1) {
+                    StopAll();
+                    UpdateStatus(L"Media Foundation: 播放完成");
+                } else if (ret == -1 && mf_get_width() > 0) {
+                    StopAll();
+                    UpdateStatus(L"Media Foundation: 解码错误");
+                } else {
+                    /* Update status with media info and progress */
+                    double pos = (double)mf_get_position() / 10000000.0;
+                    double dur = (double)mf_get_duration() / 10000000.0;
+                    int hasVid = mf_has_video();
+                    int hasAud = mf_has_audio();
+                    int isHW = mf_is_using_dxva2();
+                    wchar_t msg[512];
+                    const wchar_t *hwTag = L"软解";
+                    if (g_currentMode == 3) hwTag = isHW ? L"DXVA2硬解" : L"软解";
+                    else if (g_currentMode == 4) hwTag = isHW ? L"D3D11硬解" : L"软解";
+                    else if (g_currentMode == 6) hwTag = isHW ? L"D3D12硬解" : L"软解";
+
+                    if (hasVid) {
+                        double fps = mf_get_video_fps();
+                        UINT32 vbr = mf_get_video_bitrate();
+                        if (fps > 0 && vbr > 0) {
+                            swprintf(msg, 512, L"MF %ls | %ls %dx%d %.1ffps %ukbps | %ls %ukbps | %02d:%02d/%02d:%02d drop %d/%d",
+                                     hwTag, mf_get_video_codec(), mf_get_width(), mf_get_height(), fps, vbr / 1000,
+                                     mf_get_audio_codec(), mf_get_audio_bitrate() / 1000,
+                                     (int)pos / 60, (int)pos % 60, (int)dur / 60, (int)dur % 60,
+                                     mf_get_dropped_frames(), mf_get_total_frames());
+                        } else if (fps > 0) {
+                            swprintf(msg, 512, L"MF %ls | %ls %dx%d %.1ffps | %02d:%02d/%02d:%02d drop %d/%d",
+                                     hwTag, mf_get_video_codec(), mf_get_width(), mf_get_height(), fps,
+                                     (int)pos / 60, (int)pos % 60, (int)dur / 60, (int)dur % 60,
+                                     mf_get_dropped_frames(), mf_get_total_frames());
+                        } else {
+                            swprintf(msg, 512, L"MF %ls | %ls %dx%d | %02d:%02d/%02d:%02d",
+                                     hwTag, mf_get_video_codec(), mf_get_width(), mf_get_height(),
+                                     (int)pos / 60, (int)pos % 60, (int)dur / 60, (int)dur % 60);
+                        }
+                    } else if (hasAud) {
+                        UINT32 abr = mf_get_audio_bitrate();
+                        if (abr > 0) {
+                            swprintf(msg, 512, L"MF %ls | 纯音频 %ls %ukbps | %02d:%02d/%02d:%02d",
+                                     hwTag, mf_get_audio_codec(), abr / 1000,
+                                     (int)pos / 60, (int)pos % 60, (int)dur / 60, (int)dur % 60);
+                        } else {
+                            swprintf(msg, 512, L"MF %ls | 纯音频 %ls | %02d:%02d/%02d:%02d",
+                                     hwTag, mf_get_audio_codec(),
+                                     (int)pos / 60, (int)pos % 60, (int)dur / 60, (int)dur % 60);
+                        }
+                    } else {
+                        swprintf(msg, 512, L"MF %ls | %02d:%02d/%02d:%02d",
+                                 hwTag,
+                                 (int)pos / 60, (int)pos % 60, (int)dur / 60, (int)dur % 60);
+                    }
+                    UpdateStatus(msg);
+                }
             }
         }
         return 0;

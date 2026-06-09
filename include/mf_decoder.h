@@ -33,4 +33,23 @@ int mf_is_using_dxva2(void);
 /* Get decoder description */
 const wchar_t *mf_get_decoder_info(void);
 
+/* Get video dimensions (0 for audio-only) */
+int mf_get_width(void);
+int mf_get_height(void);
+
+/* Media info queries */
+int mf_has_video(void);
+int mf_has_audio(void);
+const wchar_t *mf_get_video_codec(void);
+const wchar_t *mf_get_audio_codec(void);
+UINT32 mf_get_video_bitrate(void);
+UINT32 mf_get_audio_bitrate(void);
+double mf_get_video_fps(void);
+
+/* Get dropped frames count */
+int mf_get_dropped_frames(void);
+
+/* Get total frames rendered */
+int mf_get_total_frames(void);
+
 #endif /* MF_DECODER_H */

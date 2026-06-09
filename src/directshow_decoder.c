@@ -366,3 +366,18 @@ int ds_is_using_dxva2(void)
 {
     return g_dxva2;
 }
+
+int ds_has_video(void)
+{
+    return (g_video_w > 0 && g_video_h > 0) ? 1 : 0;
+}
+
+int ds_get_video_width(void)
+{
+    return g_video_w;
+}
+
+int ds_get_video_height(void)
+{
+    return g_video_h;
+}
