@@ -3,12 +3,12 @@
 
 /* Button IDs */
 #define IDC_BTN_DIRECTSHOW      1001
-#define IDC_BTN_MF_SOFTWARE     1002
-#define IDC_BTN_MF_DXVA2        1003
-#define IDC_BTN_MF_D3D11        1006
-#define IDC_BTN_DS_DXVA2        1007
-#define IDC_BTN_STOP            1004
-#define IDC_BTN_OPEN_FILE       1005
+#define IDC_BTN_DS_DXVA2        1002
+#define IDC_BTN_MF_SOFTWARE     1003
+#define IDC_BTN_MF_DXVA2        1004
+#define IDC_BTN_MF_D3D11        1005
+#define IDC_BTN_STOP            1006
+#define IDC_BTN_OPEN_FILE       1007
 
 /* Video display area */
 #define IDC_VIDEO_DISPLAY       1100

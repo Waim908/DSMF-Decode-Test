@@ -1,4 +1,5 @@
 OBJS=obj/main.o obj/directshow_decoder.o obj/mf_decoder.o obj/dxva2_helper.o obj/d3d11_video_helper.o
+RES=obj/resource.o
 INCLUDE_DIR=-I./include
 EXE_NAME=DSMF-Decode-Test.exe
 
@@ -39,8 +40,8 @@ endif
 
 all: ${EXE_NAME}
 
-${EXE_NAME}: ${OBJS}
-	${CC} -o ${EXE_NAME} ${OBJS} ${LDFLAGS}
+${EXE_NAME}: ${OBJS} ${RES}
+	${CC} -o ${EXE_NAME} ${OBJS} ${RES} ${LDFLAGS}
 
 clean:
 	${RMDIR}
@@ -52,3 +53,6 @@ obj:
 
 obj/%.o: src/%.c obj
 	${CC} ${CFLAGS} ${INCLUDE_DIR} -c $< -o $@
+
+obj/resource.o: res/resource.rc res/Application.manifest obj
+	${RC} -I./include -I./res $< $@
