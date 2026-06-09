@@ -7,6 +7,7 @@
 #include <windows.h>
 #include <commctrl.h>
 #include <commdlg.h>
+#include <shellapi.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -16,6 +17,20 @@
 #include "dxva2_helper.h"
 #include "d3d11_video_helper.h"
 #include "d3d12_video_helper.h"
+
+/* Compiler info macros */
+#ifdef __MINGW64__
+#define COMPILER_INFO_FMT L"MinGW-w64 %d.%d (GCC %d.%d.%d)"
+#define COMPILER_INFO_ARGS __MINGW64_VERSION_MAJOR, __MINGW64_VERSION_MINOR, \
+    __GNUC__, __GNUC_MINOR__, __GNUC_PATCHLEVEL__
+#elif defined(__MINGW32__)
+#define COMPILER_INFO_FMT L"MinGW %d.%d (GCC %d.%d.%d)"
+#define COMPILER_INFO_ARGS __MINGW32_MAJOR_VERSION, __MINGW32_MINOR_VERSION, \
+    __GNUC__, __GNUC_MINOR__, __GNUC_PATCHLEVEL__
+#else
+#define COMPILER_INFO_FMT L"GCC %d.%d.%d"
+#define COMPILER_INFO_ARGS __GNUC__, __GNUC_MINOR__, __GNUC_PATCHLEVEL__
+#endif
 
 /* Window class names */
 static const wchar_t CLASS_NAME[] = L"VideoDecoderTestClass";
@@ -40,6 +55,7 @@ static HWND g_hwndBtnD3D11   = NULL;
 static HWND g_hwndBtnD3D12   = NULL;
 static HWND g_hwndBtnStop    = NULL;
 static HWND g_hwndBtnOpen    = NULL;
+static HWND g_hwndBtnAbout   = NULL;
 static HWND g_hwndDisplay    = NULL;
 static HWND g_hwndStatus     = NULL;
 static HFONT g_hFont         = NULL;
@@ -67,6 +83,8 @@ static void StartMFD3D12(void);
 static void StopAll(void);
 static void ResizeControls(HWND hwnd);
 static int  OpenFileDialog(HWND hwnd, wchar_t *path, int path_len);
+static void ShowAboutDialog(HWND hwndParent);
+static INT_PTR CALLBACK AboutDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam);
 
 /* Helper: create a button */
 static HWND MakeButton(HWND parent, const wchar_t *text, int id, int x, int y, int w)
@@ -106,7 +124,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 
     INITCOMMONCONTROLSEX icex;
     icex.dwSize = sizeof(icex);
-    icex.dwICC  = ICC_BAR_CLASSES | ICC_STANDARD_CLASSES;
+    icex.dwICC  = ICC_BAR_CLASSES | ICC_STANDARD_CLASSES | ICC_LINK_CLASS;
     InitCommonControlsEx(&icex);
 
     wc.cbSize        = sizeof(wc);
@@ -200,6 +218,8 @@ static void CreateControls(HWND hwnd)
     g_hwndBtnStop    = MakeButton(hwnd, L"停止播放",           IDC_BTN_STOP,        x, ROW3_Y, 100);
     x += 100 + BTN_GAP;
     g_hwndBtnOpen    = MakeButton(hwnd, L"打开文件...",        IDC_BTN_OPEN_FILE,   x, ROW3_Y, 120);
+    x += 120 + BTN_GAP;
+    g_hwndBtnAbout   = MakeButton(hwnd, L"关于...",            IDC_BTN_ABOUT,       x, ROW3_Y, 80);
 
     /* Video display area */
     g_hwndDisplay = CreateWindowExW(
@@ -472,6 +492,49 @@ static int OpenFileDialog(HWND hwnd, wchar_t *path, int path_len)
     return GetOpenFileNameW(&ofn);
 }
 
+/* About dialog procedure */
+static INT_PTR CALLBACK AboutDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+    switch (msg) {
+    case WM_INITDIALOG: {
+        /* Set Chinese text programmatically (avoids encoding issues in RC file) */
+        SetWindowTextW(hDlg, L"\u5173\u4e8e DSMF-Decode-Test");
+        SetDlgItemTextW(hDlg, IDC_ABOUT_VERSION, L"\u7248\u672c\uff1a0.1");
+        SetDlgItemTextW(hDlg, IDOK, L"\u786e\u5b9a");
+
+        /* Set compiler info text */
+        wchar_t compilerInfo[256];
+        swprintf(compilerInfo, 256, COMPILER_INFO_FMT, COMPILER_INFO_ARGS);
+        SetDlgItemTextW(hDlg, IDC_ABOUT_COMPILER, compilerInfo);
+        return TRUE;
+    }
+
+    case WM_COMMAND:
+        if (LOWORD(wParam) == IDOK || LOWORD(wParam) == IDCANCEL) {
+            EndDialog(hDlg, LOWORD(wParam));
+            return TRUE;
+        }
+        break;
+
+    case WM_NOTIFY: {
+        NMHDR *nmhdr = (NMHDR *)lParam;
+        if (nmhdr->idFrom == IDC_ABOUT_LINK && nmhdr->code == NM_CLICK) {
+            NMLINK *nmlink = (NMLINK *)lParam;
+            ShellExecuteW(NULL, L"open", nmlink->item.szUrl, NULL, NULL, SW_SHOWNORMAL);
+            return TRUE;
+        }
+        break;
+    }
+    }
+    return FALSE;
+}
+
+/* Show about dialog */
+static void ShowAboutDialog(HWND hwndParent)
+{
+    DialogBoxW(NULL, MAKEINTRESOURCEW(IDD_ABOUT), hwndParent, AboutDlgProc);
+}
+
 /* Window procedure */
 static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
@@ -499,6 +562,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 swprintf(msg, 512, L"已选择文件: %ls", g_filePath);
                 UpdateStatus(msg);
             }
+            break;
+        case IDC_BTN_ABOUT:
+            ShowAboutDialog(hwnd);
             break;
         }
         return 0;

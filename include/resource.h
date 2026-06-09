@@ -10,6 +10,13 @@
 #define IDC_BTN_MF_D3D12        1008
 #define IDC_BTN_STOP            1006
 #define IDC_BTN_OPEN_FILE       1007
+#define IDC_BTN_ABOUT           1009
+
+/* About dialog */
+#define IDD_ABOUT               2000
+#define IDC_ABOUT_LINK          2001
+#define IDC_ABOUT_VERSION       2002
+#define IDC_ABOUT_COMPILER      2003
 
 /* Video display area */
 #define IDC_VIDEO_DISPLAY       1100

@@ -1,5 +1,22 @@
+#pragma code_page(65001)
 #include <windows.h>
+#include <commctrl.h>
 #include "resource.h"
 
 /* Application manifest for visual styles */
 1 RT_MANIFEST "Application.manifest"
+
+/* About dialog */
+IDD_ABOUT DIALOGEX 0, 0, 320, 180
+STYLE DS_SETFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION L"About DSMF-Decode-Test"
+FONT 9, L"Segoe UI"
+BEGIN
+    LTEXT           L"DSMF-Decode-Test", -1, 40, 12, 240, 12, SS_CENTER
+    LTEXT           L"By Waim908", -1, 40, 30, 240, 12, SS_CENTER
+    CONTROL         L"<a href=""https://github.com/Waim908/DSMF-Decode-Test"">https://github.com/Waim908/DSMF-Decode-Test</a>",
+                    IDC_ABOUT_LINK, L"SysLink", 0, 20, 50, 280, 20
+    LTEXT           L"", IDC_ABOUT_VERSION, 40, 80, 240, 12, SS_CENTER
+    LTEXT           L"", IDC_ABOUT_COMPILER, 40, 98, 240, 24, SS_CENTER
+    DEFPUSHBUTTON   L"OK", IDOK, 130, 140, 60, 16
+END

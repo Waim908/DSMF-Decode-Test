@@ -55,4 +55,4 @@ obj/%.o: src/%.c obj
 	${CC} ${CFLAGS} ${INCLUDE_DIR} -c $< -o $@
 
 obj/resource.o: res/resource.rc res/Application.manifest obj
-	${RC} -I./include -I./res $< $@
+	${RC} --codepage=65001 -I./include -I./res $< $@
