@@ -1,5 +1,3 @@
-EXE_NAME=DSMF-Decode-Test.exe
-
 # Detect OS and toolchain
 UNAME_S := $(shell uname -s 2>/dev/null || echo Windows)
 
@@ -30,6 +28,13 @@ else
         RMDIR = del /q obj\*.o 2>nul || exit 0
         TOOLCHAIN = mingw
     endif
+endif
+
+# Set executable name based on toolchain
+ifeq ($(TOOLCHAIN),msvc)
+    EXE_NAME=DSMF-Decode-Test.exe
+else
+    EXE_NAME=DSMF-Decode-Test-mingw.exe
 endif
 
 # Set flags and file extensions based on toolchain
