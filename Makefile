@@ -36,10 +36,10 @@ endif
 ifeq ($(TOOLCHAIN),msvc)
     INCLUDE_DIR=/I./include
     CFLAGS=/O2 /std:c11 /DUNICODE /D_UNICODE /DCOBJMACROS /DWINVER=0x0601 /D_WIN32_WINNT=0x0601 /W4 /wd4100 /wd4189
-    LDFLAGS=/SUBSYSTEM:WINDOWS /ENTRY:wmainCRTStartup \
+    LDFLAGS=/SUBSYSTEM:WINDOWS /ENTRY:wWinMainCRTStartup \
         strmiids.lib mfplat.lib mf.lib mfreadwrite.lib mfuuid.lib evr.lib \
-        d3d9.lib dxva2.lib d3d11.lib d3d12.lib dxgi.lib \
-        comctl32.lib gdi32.lib user32.lib ole32.lib uuid.lib comdlg32.lib shlwapi.lib winmm.lib
+        d3d9.lib dxva2.lib d3d11.lib d3d12.lib dxgi.lib dxguid.lib \
+        comctl32.lib gdi32.lib user32.lib ole32.lib uuid.lib comdlg32.lib shlwapi.lib shell32.lib winmm.lib
     OBJ_EXT = .obj
     RES_EXT = .res
     RES_FLAGS = /nologo /I./include /I./res /fo
@@ -48,8 +48,8 @@ else
     CFLAGS=-O2 -s -std=c99 -DUNICODE -D_UNICODE -DCOBJMACROS -DWINVER=0x0601 -D_WIN32_WINNT=0x0601 -Wall -Wno-unused-variable
     LDFLAGS=-s -mwindows -municode \
         -lstrmiids -lmfplat -lmf -lmfreadwrite -lmfuuid -levr \
-        -ld3d9 -ldxva2 -ld3d11 -ld3d12 -ldxgi \
-        -lcomctl32 -lgdi32 -luser32 -lole32 -luuid -lcomdlg32 -lshlwapi -lwinmm
+        -ld3d9 -ldxva2 -ld3d11 -ld3d12 -ldxgi -ldxguid \
+        -lcomctl32 -lgdi32 -luser32 -lole32 -luuid -lcomdlg32 -lshlwapi -lshell32 -lwinmm
     OBJ_EXT = .o
     RES_EXT = .o
     RES_FLAGS = --codepage=65001 -I./include -I./res
