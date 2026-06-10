@@ -35,7 +35,7 @@ endif
 # Set flags and file extensions based on toolchain
 ifeq ($(TOOLCHAIN),msvc)
     INCLUDE_DIR=/I./include
-    CFLAGS=/O2 /std:c11 /utf-8 /DUNICODE /D_UNICODE /DCOBJMACROS /DWINVER=0x0601 /D_WIN32_WINNT=0x0601 /W4 /wd4100 /wd4189
+    CFLAGS=/O3 /std:c11 /utf-8 /DUNICODE /D_UNICODE /DCOBJMACROS /DWINVER=0x0601 /D_WIN32_WINNT=0x0601 /W4 /wd4100 /wd4189
     LDFLAGS=/SUBSYSTEM:WINDOWS /ENTRY:wWinMainCRTStartup \
         strmiids.lib mfplat.lib mf.lib mfreadwrite.lib mfuuid.lib evr.lib \
         d3d9.lib dxva2.lib d3d11.lib d3d12.lib dxgi.lib dxguid.lib \
@@ -45,7 +45,7 @@ ifeq ($(TOOLCHAIN),msvc)
     RES_FLAGS = /nologo /I./include /I./res /fo
 else
     INCLUDE_DIR=-I./include
-    CFLAGS=-O2 -s -std=c99 -DUNICODE -D_UNICODE -DCOBJMACROS -DWINVER=0x0601 -D_WIN32_WINNT=0x0601 -Wall -Wno-unused-variable
+    CFLAGS=-O3 -s -std=c99 -DUNICODE -D_UNICODE -DCOBJMACROS -DWINVER=0x0601 -D_WIN32_WINNT=0x0601 -Wall -Wno-unused-variable
     LDFLAGS=-s -mwindows -municode \
         -lstrmiids -lmfplat -lmf -lmfreadwrite -lmfuuid -levr \
         -ld3d9 -ldxva2 -ld3d11 -ld3d12 -ldxgi -ldxguid \
