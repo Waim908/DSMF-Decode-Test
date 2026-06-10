@@ -462,11 +462,7 @@ static void StartMFD3D12(void)
     g_switching = 1;
     EnableButtons(FALSE);
     StopAll();
-    UpdateStatus(L"Media Foundation + D3D12: 正在初始化...");
-    if (!d3d12_video_check_support())
-        UpdateStatus(L"D3D12: 硬件加速不可用，将使用软件解码");
-    if (d3d12_video_init(g_hwndDisplay, 1920, 1080) != 0)
-        UpdateStatus(L"D3D12: 设备初始化失败，将使用软件解码");
+    UpdateStatus(L"MF + D3D12: 正在打开...");
     int ret = mf_open(g_filePath, g_hwndDisplay, 3);
     if (ret != 0) {
         swprintf(msg, 512, L"MF+D3D12: 无法播放 - %ls", g_filePath);
@@ -477,10 +473,8 @@ static void StartMFD3D12(void)
         return;
     }
     g_currentMode = 6;
-    /* Render first frame immediately to avoid black screen */
     mf_render_next_frame();
-    swprintf(msg, 512, L"Media Foundation + D3D12: %ls", mf_get_decoder_info());
-    UpdateStatus(msg);
+    UpdateStatus(mf_get_decoder_info());
     SetTimer(g_hwndMain, TIMER_RENDER, 33, NULL);
     g_renderTimerActive = 1;
     EnableButtons(TRUE);
@@ -625,7 +619,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                     const wchar_t *hwTag = L"软解";
                     if (g_currentMode == 3) hwTag = isHW ? L"DXVA2硬解" : L"软解";
                     else if (g_currentMode == 4) hwTag = isHW ? L"D3D11硬解" : L"软解";
-                    else if (g_currentMode == 6) hwTag = isHW ? L"D3D12硬解" : L"软解";
+                    else if (g_currentMode == 6) hwTag = L"D3D12(软解)";
 
                     if (hasVid) {
                         double fps = mf_get_video_fps();

@@ -196,12 +196,8 @@ static void mf_cleanup_internals(void)
     }
     g_d3d11_use_hw_render = 0;
 
-    /* Cleanup D3D12 resources */
     g_d3d12_texture = NULL;
-    if (g_d3d12_initialized) {
-        d3d12_video_cleanup();
-        g_d3d12_initialized = 0;
-    }
+    g_d3d12_initialized = 0;
     g_d3d12_use_hw_render = 0;
 
     /* Clear display area to prevent residual frames */
@@ -541,35 +537,8 @@ int mf_open(const wchar_t *filepath, HWND hwnd_display, int enable_dxva2)
         }
         d3d11_failed:;
     } else if (enable_dxva2 == 3 && g_width > 0 && g_height > 0) {
-        /* D3D12 mode */
-        fprintf(stdout, "MF: Initializing D3D12 hardware acceleration...\n");
-
-        /* Check if D3D12 device is already initialized */
-        if (!d3d12_video_is_initialized()) {
-            /* Initialize D3D12 device */
-            if (d3d12_video_init(hwnd_display, g_width, g_height) != 0) {
-                fprintf(stderr, "MF: D3D12 device init failed, falling back to software\n");
-                goto d3d12_failed;
-            }
-        } else {
-            fprintf(stdout, "MF: D3D12 device already initialized, reusing\n");
-        }
-
-        /* Initialize D3D12 video decoder */
-        if (d3d12_video_decoder_init(g_width, g_height) == 0) {
-            /* Initialize video processor for rendering */
-            if (d3d12_video_processor_init() == 0) {
-                g_d3d12_initialized = 1;
-                g_d3d12_use_hw_render = 1;
-                fprintf(stdout, "MF: D3D12 hardware acceleration enabled\n");
-            } else {
-                fprintf(stderr, "MF: D3D12 processor init failed, falling back to software\n");
-                d3d12_video_decoder_cleanup();
-            }
-        } else {
-            fprintf(stderr, "MF: D3D12 decoder init failed, falling back to software\n");
-        }
-        d3d12_failed:;
+        /* D3D12 mode - uses software decoding (D3D12 rendering not yet implemented) */
+        fprintf(stdout, "MF: D3D12 mode (software decoding)\n");
     }
 
     /* Get native audio info before converting to PCM */
@@ -950,16 +919,13 @@ const wchar_t *mf_get_decoder_info(void)
     static wchar_t info[256];
     if (g_active) {
         if (g_dxva2_initialized) {
-            swprintf(info, 256, L"Media Foundation + DXVA2 %dx%d (dropped %d/%d)",
+            swprintf(info, 256, L"MF + DXVA2 %dx%d (dropped %d/%d)",
                      g_width, g_height, g_droppedFrames, g_frameCount);
         } else if (g_d3d11_initialized) {
-            swprintf(info, 256, L"Media Foundation + D3D11 %dx%d (dropped %d/%d)",
-                     g_width, g_height, g_droppedFrames, g_frameCount);
-        } else if (g_d3d12_initialized) {
-            swprintf(info, 256, L"Media Foundation + D3D12 %dx%d (dropped %d/%d)",
+            swprintf(info, 256, L"MF + D3D11 %dx%d (dropped %d/%d)",
                      g_width, g_height, g_droppedFrames, g_frameCount);
         } else {
-            swprintf(info, 256, L"Media Foundation %dx%d (dropped %d/%d)",
+            swprintf(info, 256, L"MF %dx%d (dropped %d/%d)",
                      g_width, g_height, g_droppedFrames, g_frameCount);
         }
     } else {
