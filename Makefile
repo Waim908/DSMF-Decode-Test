@@ -35,7 +35,7 @@ endif
 # Set flags and file extensions based on toolchain
 ifeq ($(TOOLCHAIN),msvc)
     INCLUDE_DIR=/I./include
-    CFLAGS=/O2 /std:c11 /DUNICODE /D_UNICODE /DCOBJMACROS /DWINVER=0x0601 /D_WIN32_WINNT=0x0601 /W4 /wd4100 /wd4189
+    CFLAGS=/O2 /std:c11 /utf-8 /DUNICODE /D_UNICODE /DCOBJMACROS /DWINVER=0x0601 /D_WIN32_WINNT=0x0601 /W4 /wd4100 /wd4189
     LDFLAGS=/SUBSYSTEM:WINDOWS /ENTRY:wWinMainCRTStartup \
         strmiids.lib mfplat.lib mf.lib mfreadwrite.lib mfuuid.lib evr.lib \
         d3d9.lib dxva2.lib d3d11.lib d3d12.lib dxgi.lib dxguid.lib \

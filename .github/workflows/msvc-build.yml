@@ -22,6 +22,7 @@ jobs:
       
       - name: Build DSMF-Decode-Test
         run: |
+          chcp 65001
           pushd C:\
           git clone -b ${{ github.event.inputs.branch }} --depth=1 https://github.com/Waim908/DSMF-Decode-Test.git
           cd DSMF-Decode-Test
