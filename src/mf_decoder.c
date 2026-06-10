@@ -246,11 +246,11 @@ static int mf_init_audio(int channels, int sample_rate, int bits_per_sample)
 
     ZeroMemory(&wfx, sizeof(wfx));
     wfx.wFormatTag      = WAVE_FORMAT_PCM;
-    wfx.nChannels       = channels;
-    wfx.nSamplesPerSec  = sample_rate;
-    wfx.wBitsPerSample  = bits_per_sample;
-    wfx.nBlockAlign     = channels * (bits_per_sample / 8);
-    wfx.nAvgBytesPerSec = sample_rate * wfx.nBlockAlign;
+    wfx.nChannels       = (WORD)channels;
+    wfx.nSamplesPerSec  = (DWORD)sample_rate;
+    wfx.wBitsPerSample  = (WORD)bits_per_sample;
+    wfx.nBlockAlign     = (WORD)(channels * (bits_per_sample / 8));
+    wfx.nAvgBytesPerSec = (DWORD)(sample_rate * wfx.nBlockAlign);
 
     mr = waveOutOpen(&g_hWaveOut, WAVE_MAPPER, &wfx, 0, 0, CALLBACK_NULL);
     if (mr != MMSYSERR_NOERROR) {

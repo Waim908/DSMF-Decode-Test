@@ -19,7 +19,10 @@
 #include "d3d12_video_helper.h"
 
 /* Compiler info macros */
-#ifdef __MINGW64__
+#ifdef _MSC_VER
+#define COMPILER_INFO_FMT L"MSVC %d.%d"
+#define COMPILER_INFO_ARGS _MSC_VER / 100, _MSC_VER % 100
+#elif defined(__MINGW64__)
 #define COMPILER_INFO_FMT L"MinGW-w64 %d.%d (GCC %d.%d.%d)"
 #define COMPILER_INFO_ARGS __MINGW64_VERSION_MAJOR, __MINGW64_VERSION_MINOR, \
     __GNUC__, __GNUC_MINOR__, __GNUC_PATCHLEVEL__
@@ -565,9 +568,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         case IDC_BTN_STOP:        StopAll();             break;
         case IDC_BTN_OPEN_FILE:
             if (OpenFileDialog(hwnd, g_filePath, MAX_PATH)) {
-                wchar_t msg[512];
-                swprintf(msg, 512, L"已选择文件: %ls", g_filePath);
-                UpdateStatus(msg);
+                wchar_t statusMsg[512];
+                swprintf(statusMsg, 512, L"已选择文件: %ls", g_filePath);
+                UpdateStatus(statusMsg);
             }
             break;
         case IDC_BTN_ABOUT:
@@ -587,20 +590,20 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                     double pos = ds_get_position();
                     double dur = ds_get_duration();
                     int hasVid = ds_has_video();
-                    wchar_t msg[512];
+                    wchar_t statusMsg[512];
                     if (hasVid) {
-                        swprintf(msg, 512, L"DirectShow%s | 视频 %dx%d | %02d:%02d / %02d:%02d",
+                        swprintf(statusMsg, 512, L"DirectShow%s | 视频 %dx%d | %02d:%02d / %02d:%02d",
                                  g_currentMode == 5 ? L" + DXVA2" : L"",
                                  ds_get_video_width(), ds_get_video_height(),
                                  (int)pos / 60, (int)pos % 60,
                                  (int)dur / 60, (int)dur % 60);
                     } else {
-                        swprintf(msg, 512, L"DirectShow%s | 纯音频 | %02d:%02d / %02d:%02d",
+                        swprintf(statusMsg, 512, L"DirectShow%s | 纯音频 | %02d:%02d / %02d:%02d",
                                  g_currentMode == 5 ? L" + DXVA2" : L"",
                                  (int)pos / 60, (int)pos % 60,
                                  (int)dur / 60, (int)dur % 60);
                     }
-                    UpdateStatus(msg);
+                    UpdateStatus(statusMsg);
                 }
             } else if (g_currentMode == 2 || g_currentMode == 3 || g_currentMode == 4 || g_currentMode == 6) {
                 /* Media Foundation modes */
@@ -618,7 +621,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                     int hasVid = mf_has_video();
                     int hasAud = mf_has_audio();
                     int isHW = mf_is_using_dxva2();
-                    wchar_t msg[512];
+                    wchar_t statusMsg[512];
                     const wchar_t *hwTag = L"软解";
                     if (g_currentMode == 3) hwTag = isHW ? L"DXVA2硬解" : L"软解";
                     else if (g_currentMode == 4) hwTag = isHW ? L"D3D11硬解" : L"软解";
@@ -644,32 +647,32 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                             swprintf(audPart, 64, L"%ls", mf_get_audio_codec());
                         /* Combine */
                         if (audPart[0])
-                            swprintf(msg, 512, L"MF %ls | %ls | %ls | %02d:%02d/%02d:%02d drop %d/%d",
+                            swprintf(statusMsg, 512, L"MF %ls | %ls | %ls | %02d:%02d/%02d:%02d drop %d/%d",
                                      hwTag, vidPart, audPart,
                                      (int)pos / 60, (int)pos % 60, (int)dur / 60, (int)dur % 60,
                                      mf_get_dropped_frames(), mf_get_total_frames());
                         else
-                            swprintf(msg, 512, L"MF %ls | %ls | %02d:%02d/%02d:%02d drop %d/%d",
+                            swprintf(statusMsg, 512, L"MF %ls | %ls | %02d:%02d/%02d:%02d drop %d/%d",
                                      hwTag, vidPart,
                                      (int)pos / 60, (int)pos % 60, (int)dur / 60, (int)dur % 60,
                                      mf_get_dropped_frames(), mf_get_total_frames());
                     } else if (hasAud) {
                         UINT32 abr = mf_get_audio_bitrate();
                         if (abr > 0) {
-                            swprintf(msg, 512, L"MF %ls | 纯音频 %ls %ukbps | %02d:%02d/%02d:%02d",
+                            swprintf(statusMsg, 512, L"MF %ls | 纯音频 %ls %ukbps | %02d:%02d/%02d:%02d",
                                      hwTag, mf_get_audio_codec(), abr / 1000,
                                      (int)pos / 60, (int)pos % 60, (int)dur / 60, (int)dur % 60);
                         } else {
-                            swprintf(msg, 512, L"MF %ls | 纯音频 %ls | %02d:%02d/%02d:%02d",
+                            swprintf(statusMsg, 512, L"MF %ls | 纯音频 %ls | %02d:%02d/%02d:%02d",
                                      hwTag, mf_get_audio_codec(),
                                      (int)pos / 60, (int)pos % 60, (int)dur / 60, (int)dur % 60);
                         }
                     } else {
-                        swprintf(msg, 512, L"MF %ls | %02d:%02d/%02d:%02d",
+                        swprintf(statusMsg, 512, L"MF %ls | %02d:%02d/%02d:%02d",
                                  hwTag,
                                  (int)pos / 60, (int)pos % 60, (int)dur / 60, (int)dur % 60);
                     }
-                    UpdateStatus(msg);
+                    UpdateStatus(statusMsg);
                 }
             }
         }
