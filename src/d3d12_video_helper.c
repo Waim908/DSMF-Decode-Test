@@ -75,6 +75,11 @@ int d3d12_video_check_support(void)
     ID3D12Device *device = NULL;
     HRESULT hr;
 
+#ifdef __MINGW32__
+    fprintf(stdout, "D3D12: Video decode check skipped in MinGW build (d3d12video.h structures may differ)\n");
+    return 0;
+#endif
+
     /* Try to create a D3D12 device */
     hr = D3D12CreateDevice(NULL, D3D_FEATURE_LEVEL_11_0, &IID_ID3D12Device, (void **)&device);
     if (FAILED(hr) || !device) {
@@ -304,6 +309,11 @@ int d3d12_video_decoder_init(int width, int height)
         return -1;
     }
 
+#ifdef __MINGW32__
+    fprintf(stderr, "D3D12: Video decoder not supported in MinGW build (d3d12video.h structures may differ)\n");
+    return -1;
+#endif
+
     d3d12_video_decoder_cleanup();
 
     /* Query video device interface */
@@ -482,6 +492,12 @@ int d3d12_video_upload_texture(void *data, int stride, int format)
         return -1;
     }
 
+#ifdef __MINGW32__
+    (void)data; (void)stride; (void)format;
+    fprintf(stderr, "D3D12: Video texture upload not supported in MinGW build\n");
+    return -1;
+#endif
+
     /* Get next available texture */
     UINT texIndex = g_nextTexture % g_numDecodeTextures;
     ID3D12Resource *pTexture = ppDecodeTextures[texIndex];
@@ -592,8 +608,18 @@ int d3d12_video_processor_init(void)
 {
     HRESULT hr;
 
-    if (!pD3D12Device || !pVideoDevice) {
+    if (!pD3D12Device) {
         fprintf(stderr, "D3D12: Device not initialized for video processor\n");
+        return -1;
+    }
+
+#ifdef __MINGW32__
+    fprintf(stderr, "D3D12: Video processor not supported in MinGW build (d3d12video.h structures may differ)\n");
+    return -1;
+#endif
+
+    if (!pVideoDevice) {
+        fprintf(stderr, "D3D12: Video device not initialized for video processor\n");
         return -1;
     }
 
@@ -666,6 +692,12 @@ int d3d12_video_processor_render(void *input_texture, void *output_texture)
     if (!pVideoProcessor || !pProcessCommandList || !pVideoProcessQueue) {
         return -1;
     }
+
+#ifdef __MINGW32__
+    (void)input_texture; (void)output_texture;
+    fprintf(stderr, "D3D12: Video processor render not supported in MinGW build\n");
+    return -1;
+#endif
 
     ID3D12Resource *pInput = (ID3D12Resource *)input_texture;
     ID3D12Resource *pOutput = (ID3D12Resource *)output_texture;

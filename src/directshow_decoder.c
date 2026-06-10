@@ -186,7 +186,11 @@ int ds_open_dxva2(const wchar_t *filepath, HWND hwnd_display, int enable_dxva2)
         if (SUCCEEDED(hr)) {
             hr = IGraphBuilder_AddFilter(pGraph, pRenderer, L"VMR-9");
             if (SUCCEEDED(hr)) {
+#ifdef __MINGW32__
+                fprintf(stdout, "DirectShow: Using VMR-9 renderer (DXVA2 capable, MinGW build)\n");
+#else
                 fprintf(stdout, "DirectShow: Using VMR-9 renderer (DXVA2 capable)\n");
+#endif
                 g_dxva2 = 1;
             } else {
                 fprintf(stderr, "DirectShow: Failed to add VMR-9 filter: 0x%08lx\n", hr);
@@ -204,7 +208,11 @@ int ds_open_dxva2(const wchar_t *filepath, HWND hwnd_display, int enable_dxva2)
             if (SUCCEEDED(hr)) {
                 hr = IGraphBuilder_AddFilter(pGraph, pRenderer, L"EVR");
                 if (SUCCEEDED(hr)) {
+#ifdef __MINGW32__
+                    fprintf(stdout, "DirectShow: Using EVR renderer (DXVA2 capable, MinGW build)\n");
+#else
                     fprintf(stdout, "DirectShow: Using EVR renderer (DXVA2 capable)\n");
+#endif
                     g_dxva2 = 1;
                 } else {
                     fprintf(stderr, "DirectShow: Failed to add EVR filter: 0x%08lx\n", hr);

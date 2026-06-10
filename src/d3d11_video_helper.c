@@ -171,6 +171,9 @@ int d3d11_video_check_support(void)
 
     if (SUCCEEDED(hr) && device) {
         device->lpVtbl->Release(device);
+#ifdef __MINGW32__
+        fprintf(stdout, "D3D11: Basic device available in MinGW build (video decode/processor may be limited)\n");
+#endif
         return 1;
     }
 
@@ -258,6 +261,10 @@ int d3d11_video_decoder_init(const D3D11VideoDecoderConfig *config)
     HRESULT hr;
 
     if (!pD3D11Device || !config) return -1;
+
+#ifdef __MINGW32__
+    fprintf(stdout, "D3D11: Video decoder init in MinGW build (may have limited support)\n");
+#endif
 
     /* Cleanup previous decoder */
     d3d11_video_decoder_cleanup();
@@ -387,6 +394,13 @@ int d3d11_video_decoder_decode(const BYTE *buffer, DWORD size, LONGLONG pts)
     if (!pVideoDecoder || !pVideoContext || !ppDecodeViews || !buffer || size == 0)
         return -1;
 
+#ifdef __MINGW32__
+    /* D3D11 video decode may not work correctly in MinGW due to structure differences */
+    (void)buffer; (void)size; (void)pts;
+    fprintf(stderr, "D3D11: Video decode not reliable in MinGW build, skipping frame\n");
+    return -1;
+#endif
+
     HRESULT hr;
     UINT viewIndex = g_nextTexture;
     g_nextTexture = (g_nextTexture + 1) % g_numTextures;
@@ -470,6 +484,10 @@ int d3d11_video_processor_init(void)
     HRESULT hr;
 
     if (!pD3D11Device || !pD3D11Context) return -1;
+
+#ifdef __MINGW32__
+    fprintf(stdout, "D3D11: Video processor init in MinGW build (may have limited support)\n");
+#endif
 
     /* Cleanup previous processor */
     d3d11_video_processor_cleanup();

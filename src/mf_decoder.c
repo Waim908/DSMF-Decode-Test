@@ -134,7 +134,20 @@ static void mf_subtype_to_name(const GUID *subtype, wchar_t *name, int name_len)
     if (IsEqualGUID(subtype, &MFAudioFormat_Dolby_AC3))  { wcscpy_s(name, name_len, L"AC3"); return; }
     if (IsEqualGUID(subtype, &MFAudioFormat_Dolby_DDPlus)) { wcscpy_s(name, name_len, L"E-AC3"); return; }
     if (IsEqualGUID(subtype, &MFAudioFormat_Vorbis))     { wcscpy_s(name, name_len, L"Vorbis"); return; }
-    /* MFAudioFormat_FLAC, MFAudioFormat_Opus, MFAudioFormat_DTS not available in MinGW */
+    /* FLAC/Opus/DTS GUIDs require WINVER >= 0x0A00, define manually if needed */
+#ifndef MFAudioFormat_FLAC
+    { static const GUID MFAudioFormat_FLAC_local = {0x0000f1ac, 0x0000, 0x0010, {0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71}};
+      if (IsEqualGUID(subtype, &MFAudioFormat_FLAC_local)) { wcscpy_s(name, name_len, L"FLAC"); return; } }
+#else
+    if (IsEqualGUID(subtype, &MFAudioFormat_FLAC))       { wcscpy_s(name, name_len, L"FLAC"); return; }
+#endif
+#ifndef MFAudioFormat_Opus
+    { static const GUID MFAudioFormat_Opus_local = {0x0000704f, 0x0000, 0x0010, {0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71}};
+      if (IsEqualGUID(subtype, &MFAudioFormat_Opus_local)) { wcscpy_s(name, name_len, L"Opus"); return; } }
+#else
+    if (IsEqualGUID(subtype, &MFAudioFormat_Opus))       { wcscpy_s(name, name_len, L"Opus"); return; }
+#endif
+    if (IsEqualGUID(subtype, &MFAudioFormat_DTS))        { wcscpy_s(name, name_len, L"DTS"); return; }
     /* Fallback: unknown codec */
     wcscpy_s(name, name_len, L"未知编码");
 }
@@ -467,7 +480,11 @@ int mf_open(const wchar_t *filepath, HWND hwnd_display, int enable_dxva2)
     /* Initialize hardware acceleration if requested */
     if (enable_dxva2 == 1 && g_width > 0 && g_height > 0) {
         /* DXVA2 mode */
+#ifdef __MINGW32__
+        fprintf(stdout, "MF: Initializing DXVA2 hardware acceleration (MinGW build)...\n");
+#else
         fprintf(stdout, "MF: Initializing DXVA2 hardware acceleration...\n");
+#endif
 
         /* Initialize DXVA2 device */
         if (dxva2_init(hwnd_display, g_width, g_height) != NULL) {
@@ -499,7 +516,11 @@ int mf_open(const wchar_t *filepath, HWND hwnd_display, int enable_dxva2)
         }
     } else if (enable_dxva2 == 2 && g_width > 0 && g_height > 0) {
         /* D3D11 mode */
+#ifdef __MINGW32__
+        fprintf(stdout, "MF: Initializing D3D11 hardware acceleration (MinGW build, may have limited support)...\n");
+#else
         fprintf(stdout, "MF: Initializing D3D11 hardware acceleration...\n");
+#endif
 
         /* Check if D3D11 device is already initialized */
         if (!d3d11_video_is_initialized()) {
@@ -538,7 +559,11 @@ int mf_open(const wchar_t *filepath, HWND hwnd_display, int enable_dxva2)
         d3d11_failed:;
     } else if (enable_dxva2 == 3 && g_width > 0 && g_height > 0) {
         /* D3D12 mode - uses software decoding (D3D12 rendering not yet implemented) */
+#ifdef __MINGW32__
+        fprintf(stdout, "MF: D3D12 mode (MinGW build, software decoding only - D3D12 video API not supported)\n");
+#else
         fprintf(stdout, "MF: D3D12 mode (software decoding)\n");
+#endif
     }
 
     /* Get native audio info before converting to PCM */
