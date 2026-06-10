@@ -1,5 +1,3 @@
-OBJS=obj/main.o obj/directshow_decoder.o obj/mf_decoder.o obj/dxva2_helper.o obj/d3d11_video_helper.o obj/d3d12_video_helper.o
-RES=obj/resource.o
 EXE_NAME=DSMF-Decode-Test.exe
 
 # Detect OS and toolchain
@@ -34,7 +32,7 @@ else
     endif
 endif
 
-# Set flags based on toolchain
+# Set flags and file extensions based on toolchain
 ifeq ($(TOOLCHAIN),msvc)
     INCLUDE_DIR=/I./include
     CFLAGS=/O2 /std:c11 /DUNICODE /D_UNICODE /DCOBJMACROS /DWINVER=0x0601 /D_WIN32_WINNT=0x0601 /W4 /wd4100 /wd4189
@@ -42,6 +40,9 @@ ifeq ($(TOOLCHAIN),msvc)
         strmiids.lib mfplat.lib mf.lib mfreadwrite.lib mfuuid.lib evr.lib \
         d3d9.lib dxva2.lib d3d11.lib d3d12.lib dxgi.lib \
         comctl32.lib gdi32.lib user32.lib ole32.lib uuid.lib comdlg32.lib shlwapi.lib winmm.lib
+    OBJ_EXT = .obj
+    RES_EXT = .res
+    RES_FLAGS = /nologo /I./include /I./res /fo
 else
     INCLUDE_DIR=-I./include
     CFLAGS=-O2 -s -std=c99 -DUNICODE -D_UNICODE -DCOBJMACROS -DWINVER=0x0601 -D_WIN32_WINNT=0x0601 -Wall -Wno-unused-variable
@@ -49,7 +50,13 @@ else
         -lstrmiids -lmfplat -lmf -lmfreadwrite -lmfuuid -levr \
         -ld3d9 -ldxva2 -ld3d11 -ld3d12 -ldxgi \
         -lcomctl32 -lgdi32 -luser32 -lole32 -luuid -lcomdlg32 -lshlwapi -lwinmm
+    OBJ_EXT = .o
+    RES_EXT = .o
+    RES_FLAGS = --codepage=65001 -I./include -I./res
 endif
+
+OBJS=obj/main$(OBJ_EXT) obj/directshow_decoder$(OBJ_EXT) obj/mf_decoder$(OBJ_EXT) obj/dxva2_helper$(OBJ_EXT) obj/d3d11_video_helper$(OBJ_EXT) obj/d3d12_video_helper$(OBJ_EXT)
+RES=obj/resource$(RES_EXT)
 
 # Detect build flag changes and force recompilation
 CURFLAGS := $(CFLAGS) $(INCLUDE_DIR)
@@ -61,41 +68,33 @@ ifneq ($(CURFLAGS),$(SAVEDFLAGS))
   $(info Build flags changed, forcing clean build...)
 endif
 
+all: ${EXE_NAME}
+
+${EXE_NAME}: ${OBJS} ${RES}
 ifeq ($(TOOLCHAIN),msvc)
-    # MSVC object files use .obj extension
-    OBJS=obj/main.obj obj/directshow_decoder.obj obj/mf_decoder.obj obj/dxva2_helper.obj obj/d3d11_video_helper.obj obj/d3d12_video_helper.obj
-    RES=obj/resource.res
-
-    all: ${EXE_NAME}
-
-    ${EXE_NAME}: ${OBJS} ${RES}
-        link.exe /OUT:${EXE_NAME} ${OBJS} ${RES} ${LDFLAGS}
-
-    obj/%.obj: src/%.c obj
-        ${CC} ${CFLAGS} ${INCLUDE_DIR} /c $< /Fo$@
-
-    obj/resource.res: res/resource.rc res/Application.manifest obj
-        ${RC} /nologo /I./include /I./res /fo$@ $<
+	link.exe /OUT:${EXE_NAME} ${OBJS} ${RES} ${LDFLAGS}
 else
-    # MinGW object files use .o extension
-    RES=obj/resource.o
+	${CC} -o ${EXE_NAME} ${OBJS} ${RES} ${LDFLAGS}
+endif
 
-    all: ${EXE_NAME}
+obj/%$(OBJ_EXT): src/%.c obj
+ifeq ($(TOOLCHAIN),msvc)
+	${CC} ${CFLAGS} ${INCLUDE_DIR} /c $< /Fo$@
+else
+	${CC} ${CFLAGS} ${INCLUDE_DIR} -c $< -o $@
+endif
 
-    ${EXE_NAME}: ${OBJS} ${RES}
-        ${CC} -o ${EXE_NAME} ${OBJS} ${RES} ${LDFLAGS}
-
-    obj/%.o: src/%.c obj
-        ${CC} ${CFLAGS} ${INCLUDE_DIR} -c $< -o $@
-
-    obj/resource.o: res/resource.rc res/Application.manifest obj
-        ${RC} --codepage=65001 -I./include -I./res $< $@
+obj/resource$(RES_EXT): res/resource.rc res/Application.manifest obj
+ifeq ($(TOOLCHAIN),msvc)
+	${RC} ${RES_FLAGS}$@ $<
+else
+	${RC} ${RES_FLAGS} $< $@
 endif
 
 clean:
-    ${RMDIR}
-    ${RM} ${EXE_NAME}
-    ${RM} .cflags
+	${RMDIR}
+	${RM} ${EXE_NAME}
+	${RM} .cflags
 
 obj:
-    ${MKDIR} obj
+	${MKDIR} obj
