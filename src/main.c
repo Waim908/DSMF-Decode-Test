@@ -506,7 +506,7 @@ static INT_PTR CALLBACK AboutDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM 
     case WM_INITDIALOG: {
         /* Set Chinese text programmatically (avoids encoding issues in RC file) */
         SetWindowTextW(hDlg, L"关于 DSMF-Decode-Test");
-        SetDlgItemTextW(hDlg, IDC_ABOUT_VERSION, L"版本：0.1");
+        SetDlgItemTextW(hDlg, IDC_ABOUT_VERSION, L"版本：demo");
         SetDlgItemTextW(hDlg, IDOK, L"确定");
 
         /* Set compiler info text */

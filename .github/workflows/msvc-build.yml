@@ -1,0 +1,35 @@
+name: Build DSMF-Decode-Test on MSVC Toolchain
+
+permissions:
+  contents: write
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to build'
+        required: true
+        default: 'main'
+
+jobs:
+  msvc-build:
+    runs-on: windows-2022
+    steps:
+      - name: Configure build for amd64
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: amd64
+      
+      - name: Build DSMF-Decode-Test
+        run: |
+          pushd C:\
+          git clone -b ${{ github.event.inputs.branch }} --depth=1 https://github.com/Waim908/DSMF-Decode-Test.git
+          cd DSMF-Decode-Test
+          if not defined NUMBER_OF_PROCESSORS set NUMBER_OF_PROCESSORS=8
+          make -j%NUMBER_OF_PROCESSORS%
+
+      - name: Upload EXE artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: DSMF-Decode-Test-EXEs
+          path: C:\DSMF-Decode-Test\*.exe
