@@ -89,7 +89,7 @@ else
 	${CC} ${CFLAGS} ${INCLUDE_DIR} -c $< -o $@
 endif
 
-obj/resource$(RES_EXT): res/resource.rc res/Application.manifest obj
+obj/resource$(RES_EXT): res/resource.rc res/Application.manifest res/main.ico obj
 ifeq ($(TOOLCHAIN),msvc)
 	${RC} ${RES_FLAGS}$@ $<
 else

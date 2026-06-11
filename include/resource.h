@@ -1,6 +1,9 @@
 #ifndef RESOURCE_H
 #define RESOURCE_H
 
+/* Application icon */
+#define IDI_ICON1               1
+
 /* Button IDs */
 #define IDC_BTN_DIRECTSHOW      1001
 #define IDC_BTN_DS_DXVA2        1002
