@@ -1,32 +1,61 @@
-# Detect OS and toolchain
+# Toolchain selection: specify CC on command line or auto-detect
+# Examples:
+#   make CC=x86_64-w64-mingw32-gcc    (Linux cross-compile)
+#   make CC=gcc                       (Windows MinGW)
+#   make CC=cl.exe                    (Windows MSVC)
+
 UNAME_S := $(shell uname -s 2>/dev/null || echo Windows)
 
-ifeq ($(UNAME_S),Linux)
-    # Linux cross-compilation with mingw-w64
-    CC = x86_64-w64-mingw32-gcc
-    RC = x86_64-w64-mingw32-windres
-    RM = rm -f
-    MKDIR = mkdir -p
-    RMDIR = rm -rf obj
-    TOOLCHAIN = mingw
+# Check if CC was explicitly specified by user
+CC_ORIGIN := $(origin CC)
+ifeq ($(CC_ORIGIN),command line)
+    USER_CC = 1
+else ifeq ($(CC_ORIGIN),environment)
+    USER_CC = 1
+else ifeq ($(CC_ORIGIN),environment override)
+    USER_CC = 1
 else
-    # Windows: detect MSVC or MinGW
-    ifneq ($(shell where cl.exe 2>nul),)
-        # MSVC detected
-        CC = cl.exe
-        RC = rc.exe
-        RM = del
-        MKDIR = mkdir
-        RMDIR = del /q obj\*.obj 2>nul || exit 0
+    USER_CC = 0
+endif
+
+ifeq ($(USER_CC),1)
+    # User specified CC, detect toolchain from it
+    ifneq ($(findstring cl,$(CC)),)
         TOOLCHAIN = msvc
     else
-        # MinGW fallback
+        TOOLCHAIN = mingw
+    endif
+else
+    # Auto-detect
+    ifeq ($(UNAME_S),Linux)
+        CC = x86_64-w64-mingw32-gcc
+        TOOLCHAIN = mingw
+    else ifneq ($(shell where cl.exe 2>nul),)
+        CC = cl.exe
+        TOOLCHAIN = msvc
+    else
         CC = gcc
-        RC = windres
+        TOOLCHAIN = mingw
+    endif
+endif
+
+# Set RC and shell commands based on toolchain
+ifeq ($(TOOLCHAIN),msvc)
+    RC ?= rc.exe
+    RM = del
+    MKDIR = mkdir
+    RMDIR = del /q obj\*.obj 2>nul || exit 0
+else
+    ifeq ($(UNAME_S),Linux)
+        RC ?= x86_64-w64-mingw32-windres
+        RM = rm -f
+        MKDIR = mkdir -p
+        RMDIR = rm -rf obj
+    else
+        RC ?= windres
         RM = del
         MKDIR = mkdir
         RMDIR = del /q obj\*.o 2>nul || exit 0
-        TOOLCHAIN = mingw
     endif
 endif
 
