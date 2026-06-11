@@ -7,6 +7,9 @@
 #define APP_LANG_CHINESE 0
 #define APP_LANG_ENGLISH 1
 
+/* Detect system UI language, returns APP_LANG_CHINESE or APP_LANG_ENGLISH */
+int Config_DetectSystemLanguage(void);
+
 /* Configuration structure */
 typedef struct {
     int language;           /* 0=Chinese, 1=English */

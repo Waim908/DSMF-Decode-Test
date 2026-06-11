@@ -19,6 +19,7 @@ typedef struct {
     const wchar_t *btnOpenFile;
     const wchar_t *btnAbout;
     const wchar_t *btnOk;
+    const wchar_t *btnCancel;
     
     /* Status messages */
     const wchar_t *statusReady;
@@ -57,6 +58,14 @@ typedef struct {
     const wchar_t *fileDialogTitle;
     const wchar_t *fileTypeVideo;
     const wchar_t *fileTypeAll;
+
+    /* Language settings dialog */
+    const wchar_t *langSettingsTitle;
+    const wchar_t *langSettingsLabel;
+    const wchar_t *langChinese;
+    const wchar_t *langEnglish;
+    const wchar_t *langSettingsHint;
+    const wchar_t *btnLangSettings;
 } LangStrings;
 
 /* Get language strings for current language */

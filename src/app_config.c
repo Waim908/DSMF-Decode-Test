@@ -10,9 +10,28 @@
 #define KEY_LANGUAGE     L"Language"
 #define KEY_LAST_OPEN_DIR L"LastOpenDir"
 
-/* INI file version for future updates */
+/* INI file version */
 #define INI_VERSION      1
 #define KEY_VERSION      L"Version"
+
+/* Language string values for INI */
+#define LANG_STR_CHINESE L"zh-CN"
+#define LANG_STR_ENGLISH L"en-US"
+
+/* Detect system UI language */
+int Config_DetectSystemLanguage(void)
+{
+    LANGID langId = GetUserDefaultUILanguage();
+    /* Primary language ID: Chinese variants (Simplified=0x04, Traditional=0x04 with sub) */
+    WORD primaryLang = PRIMARYLANGID(langId);
+    WORD subLang = SUBLANGID(langId);
+
+    /* Simplified Chinese: 0x0804, Traditional Chinese: 0x0404, etc. */
+    if (primaryLang == LANG_CHINESE) {
+        return APP_LANG_CHINESE;
+    }
+    return APP_LANG_ENGLISH;
+}
 
 /* Get path to INI file (same directory as exe) */
 void Config_GetIniPath(wchar_t *path, int path_len)
@@ -28,7 +47,7 @@ void Config_GetIniPath(wchar_t *path, int path_len)
 /* Initialize config with defaults */
 static void Config_SetDefaults(AppConfig *config)
 {
-    config->language = APP_LANG_CHINESE;
+    config->language = Config_DetectSystemLanguage();
     config->lastOpenDir[0] = L'\0';
 }
 
@@ -53,13 +72,20 @@ void Config_Init(AppConfig *config)
     
     /* Read version for future compatibility */
     int version = (int)GetPrivateProfileIntW(INI_SECTION, KEY_VERSION, 0, iniPath);
-    
+
     /* Read settings */
-    config->language = (int)GetPrivateProfileIntW(INI_SECTION, KEY_LANGUAGE, APP_LANG_CHINESE, iniPath);
-    
-    /* Validate language */
-    if (config->language != APP_LANG_CHINESE && config->language != APP_LANG_ENGLISH) {
+    wchar_t langStr[16];
+    GetPrivateProfileStringW(INI_SECTION, KEY_LANGUAGE, LANG_STR_CHINESE,
+        langStr, 16, iniPath);
+
+    /* Parse language string */
+    if (wcscmp(langStr, LANG_STR_ENGLISH) == 0) {
+        config->language = APP_LANG_ENGLISH;
+    } else if (wcscmp(langStr, LANG_STR_CHINESE) == 0) {
         config->language = APP_LANG_CHINESE;
+    } else {
+        /* Legacy numeric format or invalid, use detected system language */
+        config->language = Config_DetectSystemLanguage();
     }
     
     /* Read last open directory */
@@ -95,10 +121,11 @@ void Config_Save(const AppConfig *config)
     /* Write version */
     swprintf(value, 32, L"%d", INI_VERSION);
     WritePrivateProfileStringW(INI_SECTION, KEY_VERSION, value, iniPath);
-    
-    /* Write language */
-    swprintf(value, 32, L"%d", config->language);
-    WritePrivateProfileStringW(INI_SECTION, KEY_LANGUAGE, value, iniPath);
+
+    /* Write language as readable string */
+    WritePrivateProfileStringW(INI_SECTION, KEY_LANGUAGE,
+        (config->language == APP_LANG_ENGLISH) ? LANG_STR_ENGLISH : LANG_STR_CHINESE,
+        iniPath);
     
     /* Write last open directory */
     WritePrivateProfileStringW(INI_SECTION, KEY_LAST_OPEN_DIR,

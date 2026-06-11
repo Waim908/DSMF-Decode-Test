@@ -61,6 +61,7 @@ static HWND g_hwndBtnD3D12   = NULL;
 static HWND g_hwndBtnStop    = NULL;
 static HWND g_hwndBtnOpen    = NULL;
 static HWND g_hwndBtnAbout   = NULL;
+static HWND g_hwndBtnLang    = NULL;
 static HWND g_hwndDisplay    = NULL;
 static HWND g_hwndStatus     = NULL;
 static HFONT g_hFont         = NULL;
@@ -90,6 +91,8 @@ static void ResizeControls(HWND hwnd);
 static int  OpenFileDialog(HWND hwnd, wchar_t *path, int path_len);
 static void ShowAboutDialog(HWND hwndParent);
 static INT_PTR CALLBACK AboutDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam);
+static void ShowLangSettingsDialog(HWND hwndParent);
+static INT_PTR CALLBACK LangSettingsDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam);
 
 /* Helper: create a button */
 static HWND MakeButton(HWND parent, const wchar_t *text, int id, int x, int y, int w)
@@ -233,6 +236,8 @@ static void CreateControls(HWND hwnd)
     g_hwndBtnOpen    = MakeButton(hwnd, lang->btnOpenFile,   IDC_BTN_OPEN_FILE,   x, ROW3_Y, 120);
     x += 120 + BTN_GAP;
     g_hwndBtnAbout   = MakeButton(hwnd, lang->btnAbout,      IDC_BTN_ABOUT,       x, ROW3_Y, 80);
+    x += 80 + BTN_GAP;
+    g_hwndBtnLang    = MakeButton(hwnd, lang->btnLangSettings, IDC_BTN_LANG,   x, ROW3_Y, 80);
 
     /* Video display area */
     g_hwndDisplay = CreateWindowExW(
@@ -574,6 +579,61 @@ static void ShowAboutDialog(HWND hwndParent)
     DialogBoxW(NULL, MAKEINTRESOURCEW(IDD_ABOUT), hwndParent, AboutDlgProc);
 }
 
+/* Language settings dialog procedure */
+static INT_PTR CALLBACK LangSettingsDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+    switch (msg) {
+    case WM_INITDIALOG: {
+        const LangStrings *lang = Lang_GetStrings();
+        SetWindowTextW(hDlg, lang->langSettingsTitle);
+        SetDlgItemTextW(hDlg, IDC_LANG_LABEL, lang->langSettingsLabel);
+        SetDlgItemTextW(hDlg, IDC_LANG_HINT, lang->langSettingsHint);
+        SetDlgItemTextW(hDlg, IDOK, lang->btnOk);
+        SetDlgItemTextW(hDlg, IDCANCEL, lang->btnCancel);
+
+        /* Populate language combo */
+        HWND hCombo = GetDlgItem(hDlg, IDC_LANG_COMBO);
+        SendMessageW(hCombo, CB_ADDSTRING, 0, (LPARAM)lang->langChinese);
+        SendMessageW(hCombo, CB_ADDSTRING, 0, (LPARAM)lang->langEnglish);
+
+        /* Select current language */
+        int currentLang = Lang_GetCurrent();
+        SendMessageW(hCombo, CB_SETCURSEL, (WPARAM)currentLang, 0);
+        return TRUE;
+    }
+
+    case WM_COMMAND:
+        if (LOWORD(wParam) == IDOK) {
+            HWND hCombo = GetDlgItem(hDlg, IDC_LANG_COMBO);
+            int selected = (int)SendMessageW(hCombo, CB_GETCURSEL, 0, 0);
+            if (selected != CB_ERR && selected != Lang_GetCurrent()) {
+                /* Save new language */
+                g_config.language = selected;
+                Config_Save(&g_config);
+
+                /* Show restart message */
+                const LangStrings *lang = Lang_GetStrings();
+                MessageBoxW(hDlg, lang->langSettingsHint, lang->langSettingsTitle,
+                    MB_OK | MB_ICONINFORMATION);
+            }
+            EndDialog(hDlg, IDOK);
+            return TRUE;
+        }
+        if (LOWORD(wParam) == IDCANCEL) {
+            EndDialog(hDlg, IDCANCEL);
+            return TRUE;
+        }
+        break;
+    }
+    return FALSE;
+}
+
+/* Show language settings dialog */
+static void ShowLangSettingsDialog(HWND hwndParent)
+{
+    DialogBoxW(NULL, MAKEINTRESOURCEW(IDD_LANG_SETTINGS), hwndParent, LangSettingsDlgProc);
+}
+
 /* Window procedure */
 static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
@@ -602,13 +662,16 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 wcscpy_s(g_config.lastOpenDir, MAX_PATH, g_filePath);
                 PathRemoveFileSpecW(g_config.lastOpenDir);
                 Config_Save(&g_config);
-                
+
                 UpdateStatus(lang->statusFileSelected, g_filePath);
             }
             break;
         }
         case IDC_BTN_ABOUT:
             ShowAboutDialog(hwnd);
+            break;
+        case IDC_BTN_LANG:
+            ShowLangSettingsDialog(hwnd);
             break;
         }
         return 0;

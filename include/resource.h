@@ -14,12 +14,19 @@
 #define IDC_BTN_STOP            1006
 #define IDC_BTN_OPEN_FILE       1007
 #define IDC_BTN_ABOUT           1009
+#define IDC_BTN_LANG            1010
 
 /* About dialog */
 #define IDD_ABOUT               2000
 #define IDC_ABOUT_LINK          2001
 #define IDC_ABOUT_VERSION       2002
 #define IDC_ABOUT_COMPILER      2003
+
+/* Language settings dialog */
+#define IDD_LANG_SETTINGS       2100
+#define IDC_LANG_LABEL          2101
+#define IDC_LANG_COMBO          2102
+#define IDC_LANG_HINT           2103
 
 /* Video display area */
 #define IDC_VIDEO_DISPLAY       1100

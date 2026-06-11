@@ -22,6 +22,7 @@ static const LangStrings g_chinese = {
     L"打开文件...",
     L"关于...",
     L"确定",
+    L"取消",
     
     /* Status messages */
     L"请先打开视频文件",
@@ -59,7 +60,15 @@ static const LangStrings g_chinese = {
     /* File dialog */
     L"选择视频文件",
     L"视频文件",
-    L"所有文件"
+    L"所有文件",
+
+    /* Language settings dialog */
+    L"语言设置",
+    L"选择界面语言：",
+    L"简体中文",
+    L"English",
+    L"更改语言后需要重启程序才能生效。",
+    L"语言/Language"
 };
 
 /* English strings */
@@ -78,6 +87,7 @@ static const LangStrings g_english = {
     L"Open File...",
     L"About...",
     L"OK",
+    L"Cancel",
     
     /* Status messages */
     L"Please open a video file first",
@@ -115,7 +125,15 @@ static const LangStrings g_english = {
     /* File dialog */
     L"Select Video File",
     L"Video Files",
-    L"All Files"
+    L"All Files",
+
+    /* Language settings dialog */
+    L"Language Settings",
+    L"Select interface language:",
+    L"简体中文",
+    L"English",
+    L"Restart is required after changing language.",
+    L"语言/Language"
 };
 
 /* Get strings for current language */
