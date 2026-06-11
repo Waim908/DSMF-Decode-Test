@@ -157,8 +157,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
     wc.hCursor        = LoadCursor(NULL, IDC_ARROW);
     wc.hbrBackground  = (HBRUSH)(COLOR_BTNFACE + 1);
     wc.lpszClassName  = CLASS_NAME;
-    wc.hIcon          = LoadIcon(NULL, IDI_APPLICATION);
-    wc.hIconSm        = LoadIcon(NULL, IDI_APPLICATION);
+    wc.hIcon          = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_ICON1));
+    wc.hIconSm        = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_ICON1));
     RegisterClassExW(&wc);
 
     g_hwndMain = CreateWindowExW(
