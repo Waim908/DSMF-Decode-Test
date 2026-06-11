@@ -89,7 +89,7 @@ else
     RES_FLAGS = --codepage=65001 -I./include -I./res
 endif
 
-OBJS=obj/main$(OBJ_EXT) obj/directshow_decoder$(OBJ_EXT) obj/mf_decoder$(OBJ_EXT) obj/dxva2_helper$(OBJ_EXT) obj/d3d11_video_helper$(OBJ_EXT) obj/d3d12_video_helper$(OBJ_EXT)
+OBJS=obj/main$(OBJ_EXT) obj/directshow_decoder$(OBJ_EXT) obj/mf_decoder$(OBJ_EXT) obj/dxva2_helper$(OBJ_EXT) obj/d3d11_video_helper$(OBJ_EXT) obj/d3d12_video_helper$(OBJ_EXT) obj/app_config$(OBJ_EXT) obj/lang$(OBJ_EXT)
 RES=obj/resource$(RES_EXT)
 
 # Detect build flag changes and force recompilation
