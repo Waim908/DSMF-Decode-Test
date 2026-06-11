@@ -80,12 +80,18 @@ int ds_open(const wchar_t *filepath, HWND hwnd_display)
     if (FAILED(hr)) { fprintf(stderr, "DirectShow: Failed to create FilterGraph: 0x%08lx\n", hr); return -1; }
 
     /* Query interfaces */
-    IGraphBuilder_QueryInterface(pGraph, &IID_IMediaControl, (void **)&pControl);
-    IGraphBuilder_QueryInterface(pGraph, &IID_IMediaEvent,   (void **)&pEvent);
-    IGraphBuilder_QueryInterface(pGraph, &IID_IVideoWindow,  (void **)&pVideo);
-    IGraphBuilder_QueryInterface(pGraph, &IID_IBasicVideo,   (void **)&pBasicVideo);
-    IGraphBuilder_QueryInterface(pGraph, &IID_IBasicAudio,   (void **)&pAudio);
-    IGraphBuilder_QueryInterface(pGraph, &IID_IMediaSeeking, (void **)&pSeeking);
+    hr = IGraphBuilder_QueryInterface(pGraph, &IID_IMediaControl, (void **)&pControl);
+    if (FAILED(hr)) fprintf(stderr, "DirectShow: Failed to query IMediaControl: 0x%08lx\n", hr);
+    hr = IGraphBuilder_QueryInterface(pGraph, &IID_IMediaEvent,   (void **)&pEvent);
+    if (FAILED(hr)) fprintf(stderr, "DirectShow: Failed to query IMediaEvent: 0x%08lx\n", hr);
+    hr = IGraphBuilder_QueryInterface(pGraph, &IID_IVideoWindow,  (void **)&pVideo);
+    if (FAILED(hr)) fprintf(stderr, "DirectShow: Failed to query IVideoWindow: 0x%08lx\n", hr);
+    hr = IGraphBuilder_QueryInterface(pGraph, &IID_IBasicVideo,   (void **)&pBasicVideo);
+    if (FAILED(hr)) fprintf(stderr, "DirectShow: Failed to query IBasicVideo: 0x%08lx\n", hr);
+    hr = IGraphBuilder_QueryInterface(pGraph, &IID_IBasicAudio,   (void **)&pAudio);
+    if (FAILED(hr)) fprintf(stderr, "DirectShow: Failed to query IBasicAudio: 0x%08lx\n", hr);
+    hr = IGraphBuilder_QueryInterface(pGraph, &IID_IMediaSeeking, (void **)&pSeeking);
+    if (FAILED(hr)) fprintf(stderr, "DirectShow: Failed to query IMediaSeeking: 0x%08lx\n", hr);
 
     if (!pControl || !pVideo) {
         fprintf(stderr, "DirectShow: Failed to query required interfaces\n");
@@ -158,12 +164,18 @@ int ds_open_dxva2(const wchar_t *filepath, HWND hwnd_display, int enable_dxva2)
     if (FAILED(hr)) { fprintf(stderr, "DirectShow: Failed to create FilterGraph: 0x%08lx\n", hr); return -1; }
 
     /* Query interfaces */
-    IGraphBuilder_QueryInterface(pGraph, &IID_IMediaControl, (void **)&pControl);
-    IGraphBuilder_QueryInterface(pGraph, &IID_IMediaEvent,   (void **)&pEvent);
-    IGraphBuilder_QueryInterface(pGraph, &IID_IVideoWindow,  (void **)&pVideo);
-    IGraphBuilder_QueryInterface(pGraph, &IID_IBasicVideo,   (void **)&pBasicVideo);
-    IGraphBuilder_QueryInterface(pGraph, &IID_IBasicAudio,   (void **)&pAudio);
-    IGraphBuilder_QueryInterface(pGraph, &IID_IMediaSeeking, (void **)&pSeeking);
+    hr = IGraphBuilder_QueryInterface(pGraph, &IID_IMediaControl, (void **)&pControl);
+    if (FAILED(hr)) fprintf(stderr, "DirectShow: Failed to query IMediaControl: 0x%08lx\n", hr);
+    hr = IGraphBuilder_QueryInterface(pGraph, &IID_IMediaEvent,   (void **)&pEvent);
+    if (FAILED(hr)) fprintf(stderr, "DirectShow: Failed to query IMediaEvent: 0x%08lx\n", hr);
+    hr = IGraphBuilder_QueryInterface(pGraph, &IID_IVideoWindow,  (void **)&pVideo);
+    if (FAILED(hr)) fprintf(stderr, "DirectShow: Failed to query IVideoWindow: 0x%08lx\n", hr);
+    hr = IGraphBuilder_QueryInterface(pGraph, &IID_IBasicVideo,   (void **)&pBasicVideo);
+    if (FAILED(hr)) fprintf(stderr, "DirectShow: Failed to query IBasicVideo: 0x%08lx\n", hr);
+    hr = IGraphBuilder_QueryInterface(pGraph, &IID_IBasicAudio,   (void **)&pAudio);
+    if (FAILED(hr)) fprintf(stderr, "DirectShow: Failed to query IBasicAudio: 0x%08lx\n", hr);
+    hr = IGraphBuilder_QueryInterface(pGraph, &IID_IMediaSeeking, (void **)&pSeeking);
+    if (FAILED(hr)) fprintf(stderr, "DirectShow: Failed to query IMediaSeeking: 0x%08lx\n", hr);
 
     if (!pControl || !pVideo) {
         fprintf(stderr, "DirectShow: Failed to query required interfaces\n");
@@ -235,64 +247,65 @@ int ds_open_dxva2(const wchar_t *filepath, HWND hwnd_display, int enable_dxva2)
         return -1;
     }
 
-            if (pSource) IBaseFilter_Release(pSource);
-            if (pRenderer) IBaseFilter_Release(pRenderer);
-    
-            /* Embed video window into our display area */
-            if (hwnd_display && pVideo) {
-                g_hwndDisplay = hwnd_display;
-    
-                IVideoWindow_put_Owner(pVideo, (OAHWND)hwnd_display);
-                IVideoWindow_put_WindowStyle(pVideo, WS_CHILD | WS_CLIPSIBLINGS | WS_CLIPCHILDREN);
-                IVideoWindow_put_MessageDrain(pVideo, (OAHWND)hwnd_display);
-                IVideoWindow_put_AutoShow(pVideo, OAFALSE);
-    
-                /* Get native video size from IBasicVideo */
-                g_video_w = 0;
-                g_video_h = 0;
-                if (pBasicVideo) {
-                    long vw = 0, vh = 0;
-                    IBasicVideo_get_SourceWidth(pBasicVideo, &vw);
-                    IBasicVideo_get_SourceHeight(pBasicVideo, &vh);
-                    if (vw > 0 && vh > 0) {
-                        g_video_w = vw;
-                        g_video_h = vh;
-                        fprintf(stdout, "DirectShow: Native video size %ldx%ld\n", vw, vh);
-                    }
-                }
-    
-                /* For VMR-9/EVR, set the video position directly */
-                {
-                    RECT rc;
-                    GetClientRect(hwnd_display, &rc);
-                    int display_w = rc.right;
-                    int display_h = rc.bottom;
-    
-                    if (g_video_w > 0 && g_video_h > 0) {
-                        /* Calculate aspect-ratio preserving size */
-                        float scale_x = (float)display_w / (float)g_video_w;
-                        float scale_y = (float)display_h / (float)g_video_h;
-                        float scale = (scale_x < scale_y) ? scale_x : scale_y;
-                        int draw_w = (int)(g_video_w * scale);
-                        int draw_h = (int)(g_video_h * scale);
-                        int draw_x = (display_w - draw_w) / 2;
-                        int draw_y = (display_h - draw_h) / 2;
-    
-                        /* Set video position */
-                        IVideoWindow_SetWindowPosition(pVideo, draw_x, draw_y, draw_w, draw_h);
-                        fprintf(stdout, "DirectShow: Video position set to %dx%d at (%d,%d)\n", draw_w, draw_h, draw_x, draw_y);
-                    } else {
-                        /* No video size info, fill the window */
-                        IVideoWindow_SetWindowPosition(pVideo, 0, 0, display_w, display_h);
-                    }
-                }
-    
-                IVideoWindow_put_Visible(pVideo, OATRUE);
+    if (pSource) IBaseFilter_Release(pSource);
+    if (pRenderer) IBaseFilter_Release(pRenderer);
+
+    /* Embed video window into our display area */
+    if (hwnd_display && pVideo) {
+        g_hwndDisplay = hwnd_display;
+
+        IVideoWindow_put_Owner(pVideo, (OAHWND)hwnd_display);
+        IVideoWindow_put_WindowStyle(pVideo, WS_CHILD | WS_CLIPSIBLINGS | WS_CLIPCHILDREN);
+        IVideoWindow_put_MessageDrain(pVideo, (OAHWND)hwnd_display);
+        IVideoWindow_put_AutoShow(pVideo, OAFALSE);
+
+        /* Get native video size from IBasicVideo */
+        g_video_w = 0;
+        g_video_h = 0;
+        if (pBasicVideo) {
+            long vw = 0, vh = 0;
+            IBasicVideo_get_SourceWidth(pBasicVideo, &vw);
+            IBasicVideo_get_SourceHeight(pBasicVideo, &vh);
+            if (vw > 0 && vh > 0) {
+                g_video_w = vw;
+                g_video_h = vh;
+                fprintf(stdout, "DirectShow: Native video size %ldx%ld\n", vw, vh);
             }
-    
-            g_playing = 0;
-            return 0;
         }
+
+        /* For VMR-9/EVR, set the video position directly */
+        {
+            RECT rc;
+            GetClientRect(hwnd_display, &rc);
+            int display_w = rc.right;
+            int display_h = rc.bottom;
+
+            if (g_video_w > 0 && g_video_h > 0) {
+                /* Calculate aspect-ratio preserving size */
+                float scale_x = (float)display_w / (float)g_video_w;
+                float scale_y = (float)display_h / (float)g_video_h;
+                float scale = (scale_x < scale_y) ? scale_x : scale_y;
+                int draw_w = (int)(g_video_w * scale);
+                int draw_h = (int)(g_video_h * scale);
+                int draw_x = (display_w - draw_w) / 2;
+                int draw_y = (display_h - draw_h) / 2;
+
+                /* Set video position */
+                IVideoWindow_SetWindowPosition(pVideo, draw_x, draw_y, draw_w, draw_h);
+                fprintf(stdout, "DirectShow: Video position set to %dx%d at (%d,%d)\n", draw_w, draw_h, draw_x, draw_y);
+            } else {
+                /* No video size info, fill the window */
+                IVideoWindow_SetWindowPosition(pVideo, 0, 0, display_w, display_h);
+            }
+        }
+
+        IVideoWindow_put_Visible(pVideo, OATRUE);
+    }
+
+    g_playing = 0;
+    return 0;
+}
+
 int ds_play(void)
 {
     if (!pControl) return -1;

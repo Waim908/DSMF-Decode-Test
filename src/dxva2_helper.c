@@ -199,7 +199,10 @@ int dxva2_present(void)
 
 IDirect3DSurface9 *dxva2_get_render_target(void)
 {
-    if (pRT) return pRT;
+    if (pRT) {
+        IDirect3DSurface9_AddRef(pRT);
+        return pRT;
+    }
     if (!pDevice) return NULL;
 
     /* Get back buffer */
