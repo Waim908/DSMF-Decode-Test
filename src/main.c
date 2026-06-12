@@ -317,7 +317,8 @@ static void StopAll(void)
             FillRect(hdc, &rc, (HBRUSH)GetStockObject(BLACK_BRUSH));
             ReleaseDC(g_hwndDisplay, hdc);
         }
-        InvalidateRect(g_hwndDisplay, NULL, TRUE);
+        RedrawWindow(g_hwndDisplay, NULL, NULL,
+            RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
     }
     UpdateStatus(lang->statusStopped);
 }

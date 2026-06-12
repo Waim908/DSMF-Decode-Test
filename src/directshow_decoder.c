@@ -38,11 +38,19 @@ static void ds_cleanup(void)
     /* Hide video window and detach from owner */
     if (pVideo) {
         IVideoWindow_put_Visible(pVideo, OAFALSE);
+        IVideoWindow_put_AutoShow(pVideo, OAFALSE);
         IVideoWindow_put_Owner(pVideo, 0);
     }
 
-    /* Clear display area to prevent residual frames */
+    /* Force-hide any remaining child windows in the display area (VMR-9/EVR) */
     if (g_hwndDisplay) {
+        HWND child = GetWindow(g_hwndDisplay, GW_CHILD);
+        while (child) {
+            ShowWindow(child, SW_HIDE);
+            child = GetWindow(child, GW_HWNDNEXT);
+        }
+
+        /* Clear display area to prevent residual frames */
         HDC hdc = GetDC(g_hwndDisplay);
         if (hdc) {
             RECT rc;
@@ -50,6 +58,8 @@ static void ds_cleanup(void)
             FillRect(hdc, &rc, (HBRUSH)GetStockObject(BLACK_BRUSH));
             ReleaseDC(g_hwndDisplay, hdc);
         }
+        RedrawWindow(g_hwndDisplay, NULL, NULL,
+            RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
     }
 
     /* Release all DirectShow interfaces */

@@ -222,6 +222,9 @@ static void mf_cleanup_internals(void)
             FillRect(hdc, &rc, (HBRUSH)GetStockObject(BLACK_BRUSH));
             ReleaseDC(g_hwnd, hdc);
         }
+        RedrawWindow(g_hwnd, NULL, NULL,
+            RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+        g_hwnd = NULL;
     }
 
     g_active = 0;

@@ -119,7 +119,7 @@ int d3d11_video_init(HWND hwnd, int width, int height)
     scd.SampleDesc.Count = 1;
     scd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
     scd.BufferCount = 2;
-    scd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
+    scd.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
     scd.Scaling = DXGI_SCALING_STRETCH;
 
     hr = IDXGIFactory2_CreateSwapChainForHwnd(pFactory, (IUnknown *)pD3D11Device, hwnd, &scd, NULL, NULL, &pSwapChain);
@@ -215,6 +215,13 @@ const wchar_t *d3d11_video_get_device_info(void)
 
 void d3d11_video_cleanup(void)
 {
+    /* Present a black frame before cleanup to clear residual content */
+    if (pD3D11Context && pRenderTargetView && pSwapChain) {
+        float black[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+        ID3D11DeviceContext_ClearRenderTargetView(pD3D11Context, pRenderTargetView, black);
+        IDXGISwapChain1_Present(pSwapChain, 1, 0);
+    }
+
     /* Cleanup video processor */
     d3d11_video_processor_cleanup();
 
