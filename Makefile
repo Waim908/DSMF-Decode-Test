@@ -61,7 +61,7 @@ endif
 
 # Set executable name based on toolchain
 ifeq ($(TOOLCHAIN),msvc)
-    EXE_NAME=DSMF-Decode-Test.exe
+    EXE_NAME=DSMF-Decode-Test-msvc.exe
 else
     EXE_NAME=DSMF-Decode-Test-mingw.exe
 endif
