@@ -336,7 +336,7 @@ static void StartDirectShow(void)
     int ret = ds_open(g_filePath, g_hwndDisplay);
     if (ret != 0) {
         swprintf(msg, 512, L"DirectShow: %ls", g_filePath);
-        UpdateStatus(msg);
+        UpdateStatus(L"%ls", msg);
         EnableButtons(TRUE);
         g_switching = 0;
         MessageBoxW(g_hwndMain, msg, lang->msgError, MB_OK | MB_ICONERROR);
@@ -346,7 +346,7 @@ static void StartDirectShow(void)
     if (ret != 0) { UpdateStatus(L"DirectShow: %ls", lang->msgPlayFailed); ds_stop(); EnableButtons(TRUE); g_switching = 0; return; }
     g_currentMode = 1;
     swprintf(msg, 512, L"DirectShow: %ls %ls", lang->statusPlaying, g_filePath);
-    UpdateStatus(msg);
+    UpdateStatus(L"%ls", msg);
     SetTimer(g_hwndMain, TIMER_RENDER, 100, NULL);
     g_renderTimerActive = 1;
     EnableButtons(TRUE);
@@ -367,7 +367,7 @@ static void StartDirectShowDXVA2(void)
     int ret = ds_open_dxva2(g_filePath, g_hwndDisplay, 1);
     if (ret != 0) {
         swprintf(msg, 512, L"DirectShow + DXVA2: %ls - %ls", lang->msgCannotPlay, g_filePath);
-        UpdateStatus(msg);
+        UpdateStatus(L"%ls", msg);
         EnableButtons(TRUE);
         g_switching = 0;
         MessageBoxW(g_hwndMain, msg, lang->msgError, MB_OK | MB_ICONERROR);
@@ -378,7 +378,7 @@ static void StartDirectShowDXVA2(void)
     g_currentMode = 5;
     swprintf(msg, 512, L"DirectShow + DXVA2: %ls %ls%s", lang->statusPlaying, g_filePath,
              ds_is_using_dxva2() ? lang->hwAccel : lang->hwFallback);
-    UpdateStatus(msg);
+    UpdateStatus(L"%ls", msg);
     SetTimer(g_hwndMain, TIMER_RENDER, 100, NULL);
     g_renderTimerActive = 1;
     EnableButtons(TRUE);
@@ -399,7 +399,7 @@ static void StartMFSoftware(void)
     int ret = mf_open(g_filePath, g_hwndDisplay, 0);
     if (ret != 0) {
         swprintf(msg, 512, L"Media Foundation: %ls - %ls", lang->msgCannotPlay, g_filePath);
-        UpdateStatus(msg);
+        UpdateStatus(L"%ls", msg);
         EnableButtons(TRUE);
         g_switching = 0;
         MessageBoxW(g_hwndMain, msg, lang->msgError, MB_OK | MB_ICONERROR);
@@ -408,7 +408,7 @@ static void StartMFSoftware(void)
     g_currentMode = 2;
     mf_render_next_frame();
     swprintf(msg, 512, L"Media Foundation (%ls): %ls", lang->hwSoftware, mf_get_decoder_info());
-    UpdateStatus(msg);
+    UpdateStatus(L"%ls", msg);
     SetTimer(g_hwndMain, TIMER_RENDER, 33, NULL);
     g_renderTimerActive = 1;
     EnableButtons(TRUE);
@@ -431,7 +431,7 @@ static void StartMFDXVA2(void)
     int ret = mf_open(g_filePath, g_hwndDisplay, 1);
     if (ret != 0) {
         swprintf(msg, 512, L"MF+DXVA2: %ls - %ls", lang->msgCannotPlay, g_filePath);
-        UpdateStatus(msg);
+        UpdateStatus(L"%ls", msg);
         EnableButtons(TRUE);
         g_switching = 0;
         MessageBoxW(g_hwndMain, msg, lang->msgError, MB_OK | MB_ICONERROR);
@@ -440,7 +440,7 @@ static void StartMFDXVA2(void)
     g_currentMode = 3;
     mf_render_next_frame();
     swprintf(msg, 512, L"Media Foundation + DXVA2: %ls", mf_get_decoder_info());
-    UpdateStatus(msg);
+    UpdateStatus(L"%ls", msg);
     SetTimer(g_hwndMain, TIMER_RENDER, 33, NULL);
     g_renderTimerActive = 1;
     EnableButtons(TRUE);
@@ -465,7 +465,7 @@ static void StartMFD3D11(void)
     int ret = mf_open(g_filePath, g_hwndDisplay, 2);
     if (ret != 0) {
         swprintf(msg, 512, L"MF+D3D11: %ls - %ls", lang->msgCannotPlay, g_filePath);
-        UpdateStatus(msg);
+        UpdateStatus(L"%ls", msg);
         EnableButtons(TRUE);
         g_switching = 0;
         MessageBoxW(g_hwndMain, msg, lang->msgError, MB_OK | MB_ICONERROR);
@@ -474,7 +474,7 @@ static void StartMFD3D11(void)
     g_currentMode = 4;
     mf_render_next_frame();
     swprintf(msg, 512, L"Media Foundation + D3D11: %ls", mf_get_decoder_info());
-    UpdateStatus(msg);
+    UpdateStatus(L"%ls", msg);
     SetTimer(g_hwndMain, TIMER_RENDER, 33, NULL);
     g_renderTimerActive = 1;
     EnableButtons(TRUE);
@@ -495,7 +495,7 @@ static void StartMFD3D12(void)
     int ret = mf_open(g_filePath, g_hwndDisplay, 3);
     if (ret != 0) {
         swprintf(msg, 512, L"MF+D3D12: %ls - %ls", lang->msgCannotPlay, g_filePath);
-        UpdateStatus(msg);
+        UpdateStatus(L"%ls", msg);
         EnableButtons(TRUE);
         g_switching = 0;
         MessageBoxW(g_hwndMain, msg, lang->msgError, MB_OK | MB_ICONERROR);
@@ -503,7 +503,7 @@ static void StartMFD3D12(void)
     }
     g_currentMode = 6;
     mf_render_next_frame();
-    UpdateStatus(mf_get_decoder_info());
+    UpdateStatus(L"%ls", mf_get_decoder_info());
     SetTimer(g_hwndMain, TIMER_RENDER, 33, NULL);
     g_renderTimerActive = 1;
     EnableButtons(TRUE);
