@@ -237,7 +237,7 @@ static void CreateControls(HWND hwnd)
     x += 120 + BTN_GAP;
     g_hwndBtnAbout   = MakeButton(hwnd, lang->btnAbout,      IDC_BTN_ABOUT,       x, ROW3_Y, 80);
     x += 80 + BTN_GAP;
-    g_hwndBtnLang    = MakeButton(hwnd, lang->btnLangSettings, IDC_BTN_LANG,   x, ROW3_Y, 80);
+    g_hwndBtnLang    = MakeButton(hwnd, lang->btnLangSettings, IDC_BTN_LANG,   x, ROW3_Y, 120);
 
     /* Video display area */
     g_hwndDisplay = CreateWindowExW(
