@@ -5,4 +5,5 @@
 /DirectShow
 .cflags
 *.ini
-video-info.txt
+decoder_log.txt
+msvc-build.sh
