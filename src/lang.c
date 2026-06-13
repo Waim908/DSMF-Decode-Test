@@ -58,8 +58,9 @@ static const LangStrings g_chinese = {
     L"版本：0.1",
     
     /* File dialog */
-    L"选择视频文件",
+    L"选择媒体文件",
     L"视频文件",
+    L"音频文件",
     L"所有文件",
 
     /* Language settings dialog */
@@ -123,8 +124,9 @@ static const LangStrings g_english = {
     L"Version: 0.1",
     
     /* File dialog */
-    L"Select Video File",
+    L"Select Media File",
     L"Video Files",
+    L"Audio Files",
     L"All Files",
 
     /* Language settings dialog */

@@ -57,6 +57,7 @@ typedef struct {
     /* File dialog */
     const wchar_t *fileDialogTitle;
     const wchar_t *fileTypeVideo;
+    const wchar_t *fileTypeAudio;
     const wchar_t *fileTypeAll;
 
     /* Language settings dialog */

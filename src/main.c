@@ -515,15 +515,25 @@ static int OpenFileDialog(HWND hwnd, wchar_t *path, int path_len)
 {
     const LangStrings *lang = Lang_GetStrings();
     OPENFILENAMEW ofn;
-    wchar_t filter[256];
+    wchar_t filter[512];
+    int pos = 0;
     
-    /* Build filter string */
-    int len = swprintf(filter, 256, L"%ls (*.mp4;*.avi;*.mkv;*.wmv;*.mov;*.flv;*.webm;*.m4v)", lang->fileTypeVideo);
-    wcscpy_s(filter + len + 1, 256 - len - 1, L"*.mp4;*.avi;*.mkv;*.wmv;*.mov;*.flv;*.webm;*.m4v");
-    len = wcslen(filter) + 1;
-    len += swprintf(filter + len + 1, 256 - len - 1, L"%ls (*.*)", lang->fileTypeAll) + 1;
-    wcscpy_s(filter + len + 1, 256 - len - 1, L"*.*");
-    filter[wcslen(filter) + 2] = L'\0';  /* Double null terminator */
+    /* Build filter string in required format: "Display\0Pattern\0Display\0Pattern\0\0" */
+    
+    /* Video files */
+    pos += swprintf(filter + pos, 512 - pos, L"%ls (*.mp4;*.avi;*.mkv;*.wmv;*.mov;*.flv;*.webm;*.m4v)", lang->fileTypeVideo) + 1;
+    pos += swprintf(filter + pos, 512 - pos, L"*.mp4;*.avi;*.mkv;*.wmv;*.mov;*.flv;*.webm;*.m4v") + 1;
+    
+    /* Audio files */
+    pos += swprintf(filter + pos, 512 - pos, L"%ls (*.mp3;*.wav;*.aac;*.flac;*.ogg;*.wma;*.m4a)", lang->fileTypeAudio) + 1;
+    pos += swprintf(filter + pos, 512 - pos, L"*.mp3;*.wav;*.aac;*.flac;*.ogg;*.wma;*.m4a") + 1;
+    
+    /* All files */
+    pos += swprintf(filter + pos, 512 - pos, L"%ls (*.*)", lang->fileTypeAll) + 1;
+    pos += swprintf(filter + pos, 512 - pos, L"*.*") + 1;
+    
+    /* Double null terminator */
+    filter[pos] = L'\0';
     
     ZeroMemory(&ofn, sizeof(ofn));
     ofn.lStructSize  = sizeof(ofn);
