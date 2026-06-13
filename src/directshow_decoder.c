@@ -8,8 +8,8 @@
 #include <dshow.h>
 #include <stdio.h>
 
-/* CLSID_EnhancedVideoRenderer: may not be in dshow.h for MinGW */
-#ifndef CLSID_EnhancedVideoRenderer
+/* CLSID_EnhancedVideoRenderer: MSVC has extern in strmif.h, MinGW needs definition */
+#ifndef _MSC_VER
 static const CLSID CLSID_EnhancedVideoRenderer = {0xfa10746c, 0x9b63, 0x4b6c, {0xbc, 0x49, 0xfc, 0x30, 0x0e, 0xa5, 0xf2, 0x56}};
 #endif
 
