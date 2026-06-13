@@ -256,10 +256,10 @@ static void CreateControls(HWND hwnd)
         hwnd, (HMENU)(UINT_PTR)IDC_LOG_DISPLAY, NULL, NULL);
     if (g_hwndLog && g_hFont) SendMessageW(g_hwndLog, WM_SETFONT, (WPARAM)g_hFont, TRUE);
 
-    /* Video display area */
+    /* Video display area - SS_BLACKRECT ensures black background even during resize */
     g_hwndDisplay = CreateWindowExW(
         WS_EX_CLIENTEDGE, L"STATIC", L"",
-        WS_CHILD | WS_VISIBLE | SS_SIMPLE,
+        WS_CHILD | WS_VISIBLE | SS_BLACKRECT | WS_CLIPSIBLINGS,
         0, 0, 0, 0,
         hwnd, (HMENU)(UINT_PTR)IDC_VIDEO_DISPLAY, NULL, NULL);
 
@@ -277,6 +277,9 @@ static void ResizeControls(HWND hwnd)
     RECT rc;
     GetClientRect(hwnd, &rc);
 
+    /* Freeze drawing to prevent flickering/tearing during rapid resize (e.g. maximize) */
+    SendMessageW(hwnd, WM_SETREDRAW, FALSE, 0);
+
     /* Status bar */
     SendMessageW(g_hwndStatus, WM_SIZE, 0, 0);
     RECT rcStatus;
@@ -290,14 +293,29 @@ static void ResizeControls(HWND hwnd)
     int log_x = btn_area_w + BTN_GAP;
     int log_w = rc.right - log_x - BTN_PAD;
     if (log_w < 100) log_w = 100;
-    MoveWindow(g_hwndLog, log_x, BTN_PAD, log_w, TOOLBAR_H - BTN_PAD * 2, TRUE);
+    MoveWindow(g_hwndLog, log_x, BTN_PAD, log_w, TOOLBAR_H - BTN_PAD * 2, FALSE);
 
     /* Video display fills the rest */
     int display_y = TOOLBAR_H;
     int display_h = rc.bottom - display_y - status_h;
     if (display_h < 0) display_h = 0;
 
-    MoveWindow(g_hwndDisplay, 0, display_y, rc.right, display_h, TRUE);
+    MoveWindow(g_hwndDisplay, 0, display_y, rc.right, display_h, FALSE);
+
+    /* Unfreeze drawing and repaint all at once */
+    SendMessageW(hwnd, WM_SETREDRAW, TRUE, 0);
+    RedrawWindow(hwnd, NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+
+    /* Clear display area to prevent residual frames */
+    if (g_hwndDisplay) {
+        HDC hdc = GetDC(g_hwndDisplay);
+        if (hdc) {
+            RECT vrc;
+            GetClientRect(g_hwndDisplay, &vrc);
+            FillRect(hdc, &vrc, (HBRUSH)GetStockObject(BLACK_BRUSH));
+            ReleaseDC(g_hwndDisplay, hdc);
+        }
+    }
 
     /* DirectShow resize */
     if (g_currentMode == 1 || g_currentMode == 5) {
