@@ -1,5 +1,7 @@
 # 'DSMF-Decode-Test' is DirectShow MediaFoundation Decode Test
 
+![logo](dsmf-logo.png)
+
 通过windows api解码视频与音频。
 
 注意！此软件不能真实反映系统的实际解码效果，其次某些的系统肯定装了第三方解码器这些，其次windows的directshow mf框架实际支持的格式实在有限，很多视频可能都无法播放！
