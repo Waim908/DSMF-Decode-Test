@@ -44,4 +44,9 @@ int ds_has_video(void);
 int ds_get_video_width(void);
 int ds_get_video_height(void);
 
+/* Enumerate registered DirectShow filters and log them.
+ * category: 0=all, 1=video decoders, 2=audio decoders, 3=video compressors, 4=audio compressors
+ * Returns the number of filters found. */
+int ds_enum_filters(int category);
+
 #endif /* DIRECTSHOW_DECODER_H */

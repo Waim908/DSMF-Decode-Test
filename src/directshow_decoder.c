@@ -7,6 +7,7 @@
 
 #include <dshow.h>
 #include <stdio.h>
+#include <shlwapi.h>
 
 /* CLSID_EnhancedVideoRenderer: MSVC has extern in strmif.h, MinGW needs definition */
 #ifndef _MSC_VER
@@ -156,6 +157,9 @@ int ds_open(const wchar_t *filepath, HWND hwnd_display)
         ds_update_aspect();
         IVideoWindow_put_Visible(pVideo, OATRUE);
     }
+
+    /* Show registered video decoders in log */
+    ds_enum_filters(1);
 
     g_playing = 0;
     return 0;
@@ -313,6 +317,9 @@ int ds_open_dxva2(const wchar_t *filepath, HWND hwnd_display, int enable_dxva2)
         IVideoWindow_put_Visible(pVideo, OATRUE);
     }
 
+    /* Show registered video decoders in log */
+    ds_enum_filters(1);
+
     g_playing = 0;
     return 0;
 }
@@ -430,4 +437,89 @@ int ds_get_video_width(void)
 int ds_get_video_height(void)
 {
     return g_video_h;
+}
+
+/* Helper: convert CLSID to string */
+static void ds_clsid_to_string(REFCLSID clsid, wchar_t *buf, int buf_len)
+{
+    StringFromGUID2(clsid, buf, buf_len);
+}
+
+/* Helper: enumerate filters in a category from registry */
+static int ds_enum_category_filters(REFCLSID pCategoryClsid, const wchar_t *category_name)
+{
+    HKEY hKey;
+    wchar_t keyPath[256];
+    wchar_t clsidStr[64];
+    int count = 0;
+
+    /* Build registry path: CLSID\{category-clsid}\Instance */
+    ds_clsid_to_string(pCategoryClsid, clsidStr, 64);
+    swprintf(keyPath, 256, L"CLSID\\%ls\\Instance", clsidStr);
+
+    if (RegOpenKeyExW(HKEY_CLASSES_ROOT, keyPath, 0, KEY_READ, &hKey) != ERROR_SUCCESS) {
+        Log_Printf(L"[DS Filters] Cannot open category: %ls", category_name);
+        return 0;
+    }
+
+    Log_Printf(L"=== %ls ===", category_name);
+
+    DWORD index = 0;
+    wchar_t subKeyName[256];
+    DWORD subKeyLen = 256;
+
+    while (RegEnumKeyExW(hKey, index, subKeyName, &subKeyLen, NULL, NULL, NULL, NULL) == ERROR_SUCCESS) {
+        HKEY hSubKey;
+        wchar_t subKeyPath[512];
+        swprintf(subKeyPath, 512, L"%ls\\%ls", keyPath, subKeyName);
+
+        if (RegOpenKeyExW(HKEY_CLASSES_ROOT, subKeyPath, 0, KEY_READ, &hSubKey) == ERROR_SUCCESS) {
+            /* Read filter name */
+            wchar_t filterName[256] = L"(unknown)";
+            DWORD nameLen = sizeof(filterName);
+            RegQueryValueExW(hSubKey, L"FriendlyName", NULL, NULL, (LPBYTE)filterName, &nameLen);
+
+            /* Read CLSID string */
+            wchar_t filterClsid[64] = L"";
+            DWORD clsidLen = sizeof(filterClsid);
+            RegQueryValueExW(hSubKey, L"CLSID", NULL, NULL, (LPBYTE)filterClsid, &clsidLen);
+
+            Log_Printf(L"  [%ls] %ls", filterClsid, filterName);
+            count++;
+
+            RegCloseKey(hSubKey);
+        }
+
+        subKeyLen = 256;
+        index++;
+    }
+
+    RegCloseKey(hKey);
+    return count;
+}
+
+int ds_enum_filters(int category)
+{
+    int total = 0;
+
+    Log_Printf(L"");
+    Log_Printf(L"============ DirectShow Filter Registration Info ============");
+    Log_Printf(L"");
+
+    if (category == 0 || category == 1) {
+        total += ds_enum_category_filters(&CLSID_VideoCompressorCategory, L"Video Compressors / Decompressors");
+    }
+    if (category == 0 || category == 2) {
+        total += ds_enum_category_filters(&CLSID_AudioCompressorCategory, L"Audio Compressors / Decompressors");
+    }
+    if (category == 0 || category == 3) {
+        total += ds_enum_category_filters(&CLSID_LegacyAmFilterCategory, L"DirectShow Filters (Legacy)");
+    }
+
+    Log_Printf(L"");
+    Log_Printf(L"Total filters found: %d", total);
+    Log_Printf(L"============================================================");
+    Log_Printf(L"");
+
+    return total;
 }
