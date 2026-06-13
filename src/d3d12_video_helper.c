@@ -5,6 +5,7 @@
  */
 #define INITGUID
 #include "d3d12_video_helper.h"
+#include "log.h"
 
 #include <d3d12.h>
 #include <d3d12video.h>
@@ -76,7 +77,7 @@ int d3d12_video_check_support(void)
     HRESULT hr;
 
 #ifdef __MINGW32__
-    fprintf(stdout, "D3D12: Video decode check skipped in MinGW build (d3d12video.h structures may differ)\n");
+    Log_Printf(L"D3D12: Video decode check skipped in MinGW build (d3d12video.h structures may differ");
     return 0;
 #endif
 
@@ -126,14 +127,14 @@ int d3d12_video_init(HWND hwnd, int width, int height)
     /* Create DXGI factory */
     hr = CreateDXGIFactory1(&IID_IDXGIFactory4, (void **)&pFactory);
     if (FAILED(hr)) {
-        fprintf(stderr, "D3D12: CreateDXGIFactory1 failed: 0x%08lx\n", hr);
+        Log_Printf(L"D3D12: CreateDXGIFactory1 failed: 0x%08l", hr);
         return -1;
     }
 
     /* Create D3D12 device */
     hr = D3D12CreateDevice(NULL, D3D_FEATURE_LEVEL_11_0, &IID_ID3D12Device, (void **)&pD3D12Device);
     if (FAILED(hr)) {
-        fprintf(stderr, "D3D12: CreateDevice failed: 0x%08lx\n", hr);
+        Log_Printf(L"D3D12: CreateDevice failed: 0x%08l", hr);
         SAFE_RELEASE(pFactory);
         return -1;
     }
@@ -146,7 +147,7 @@ int d3d12_video_init(HWND hwnd, int width, int height)
 
     hr = ID3D12Device_CreateCommandQueue(pD3D12Device, &queueDesc, &IID_ID3D12CommandQueue, (void **)&pVideoDecodeQueue);
     if (FAILED(hr)) {
-        fprintf(stderr, "D3D12: CreateCommandQueue (decode) failed: 0x%08lx\n", hr);
+        Log_Printf(L"D3D12: CreateCommandQueue (decode) failed: 0x%08l", hr);
         d3d12_video_cleanup();
         SAFE_RELEASE(pFactory);
         return -1;
@@ -159,7 +160,7 @@ int d3d12_video_init(HWND hwnd, int width, int height)
 
     hr = ID3D12Device_CreateCommandQueue(pD3D12Device, &queueDesc, &IID_ID3D12CommandQueue, (void **)&pVideoProcessQueue);
     if (FAILED(hr)) {
-        fprintf(stderr, "D3D12: CreateCommandQueue (process) failed: 0x%08lx\n", hr);
+        Log_Printf(L"D3D12: CreateCommandQueue (process) failed: 0x%08l", hr);
         d3d12_video_cleanup();
         SAFE_RELEASE(pFactory);
         return -1;
@@ -181,7 +182,7 @@ int d3d12_video_init(HWND hwnd, int width, int height)
     hr = IDXGIFactory4_CreateSwapChainForHwnd(pFactory, (IUnknown *)pVideoDecodeQueue, hwnd, &scd, NULL, NULL, &pSwapChain1);
     SAFE_RELEASE(pFactory);
     if (FAILED(hr)) {
-        fprintf(stderr, "D3D12: CreateSwapChainForHwnd failed: 0x%08lx\n", hr);
+        Log_Printf(L"D3D12: CreateSwapChainForHwnd failed: 0x%08l", hr);
         d3d12_video_cleanup();
         return -1;
     }
@@ -189,7 +190,7 @@ int d3d12_video_init(HWND hwnd, int width, int height)
     hr = IDXGISwapChain1_QueryInterface(pSwapChain1, &IID_IDXGISwapChain3, (void **)&pSwapChain);
     SAFE_RELEASE(pSwapChain1);
     if (FAILED(hr)) {
-        fprintf(stderr, "D3D12: QueryInterface IDXGISwapChain3 failed: 0x%08lx\n", hr);
+        Log_Printf(L"D3D12: QueryInterface IDXGISwapChain3 failed: 0x%08l", hr);
         d3d12_video_cleanup();
         return -1;
     }
@@ -205,7 +206,7 @@ int d3d12_video_init(HWND hwnd, int width, int height)
     for (UINT i = 0; i < g_numBackBuffers; i++) {
         hr = IDXGISwapChain3_GetBuffer(pSwapChain, i, &IID_ID3D12Resource, (void **)&ppBackBuffers[i]);
         if (FAILED(hr)) {
-            fprintf(stderr, "D3D12: GetBuffer %u failed: 0x%08lx\n", i, hr);
+            Log_Printf(L"D3D12: GetBuffer %u failed: 0x%08l", i, hr);
             d3d12_video_cleanup();
             return -1;
         }
@@ -214,14 +215,14 @@ int d3d12_video_init(HWND hwnd, int width, int height)
     /* Create fence for synchronization */
     hr = ID3D12Device_CreateFence(pD3D12Device, 0, D3D12_FENCE_FLAG_NONE, &IID_ID3D12Fence, (void **)&pFence);
     if (FAILED(hr)) {
-        fprintf(stderr, "D3D12: CreateFence failed: 0x%08lx\n", hr);
+        Log_Printf(L"D3D12: CreateFence failed: 0x%08l", hr);
         d3d12_video_cleanup();
         return -1;
     }
 
     hFenceEvent = CreateEventW(NULL, FALSE, FALSE, NULL);
     if (!hFenceEvent) {
-        fprintf(stderr, "D3D12: CreateEvent failed\n");
+        Log_Printf(L"D3D12: CreateEvent faile");
         d3d12_video_cleanup();
         return -1;
     }
@@ -231,7 +232,7 @@ int d3d12_video_init(HWND hwnd, int width, int height)
     g_height = height;
     g_frameIndex = 0;
 
-    fprintf(stdout, "D3D12: Device created successfully (%dx%d)\n", width, height);
+    Log_Printf(L"D3D12: Device created successfully (%dx%d", width, height);
     return 0;
 }
 
@@ -305,12 +306,12 @@ int d3d12_video_decoder_init(int width, int height)
     HRESULT hr;
 
     if (!pD3D12Device) {
-        fprintf(stderr, "D3D12: Device not initialized\n");
+        Log_Printf(L"D3D12: Device not initialize");
         return -1;
     }
 
 #ifdef __MINGW32__
-    fprintf(stderr, "D3D12: Video decoder not supported in MinGW build (d3d12video.h structures may differ)\n");
+    Log_Printf(L"D3D12: Video decoder not supported in MinGW build (d3d12video.h structures may differ");
     return -1;
 #endif
 
@@ -319,7 +320,7 @@ int d3d12_video_decoder_init(int width, int height)
     /* Query video device interface */
     hr = ID3D12Device_QueryInterface(pD3D12Device, &IID_ID3D12VideoDevice, (void **)&pVideoDevice);
     if (FAILED(hr)) {
-        fprintf(stderr, "D3D12: QueryInterface ID3D12VideoDevice failed: 0x%08lx\n", hr);
+        Log_Printf(L"D3D12: QueryInterface ID3D12VideoDevice failed: 0x%08l", hr);
         return -1;
     }
 
@@ -336,7 +337,7 @@ int d3d12_video_decoder_init(int width, int height)
     hr = ID3D12VideoDevice_CheckFeatureSupport(pVideoDevice,
         D3D12_FEATURE_VIDEO_DECODE_SUPPORT, &support, sizeof(support));
     if (FAILED(hr) || !(support.SupportFlags & D3D12_VIDEO_DECODE_SUPPORT_FLAG_SUPPORTED)) {
-        fprintf(stderr, "D3D12: H.264 decode not supported\n");
+        Log_Printf(L"D3D12: H.264 decode not supporte");
         d3d12_video_decoder_cleanup();
         return -1;
     }
@@ -353,7 +354,7 @@ int d3d12_video_decoder_init(int width, int height)
 
     hr = ID3D12VideoDevice_CreateVideoDecoder(pVideoDevice, &decoderDesc, &IID_ID3D12VideoDecoder, (void **)&pVideoDecoder);
     if (FAILED(hr)) {
-        fprintf(stderr, "D3D12: CreateVideoDecoder failed: 0x%08lx\n", hr);
+        Log_Printf(L"D3D12: CreateVideoDecoder failed: 0x%08l", hr);
         d3d12_video_decoder_cleanup();
         return -1;
     }
@@ -371,7 +372,7 @@ int d3d12_video_decoder_init(int width, int height)
 
     hr = ID3D12VideoDevice_CreateVideoDecoderHeap(pVideoDevice, &heapDesc, &IID_ID3D12VideoDecoderHeap, (void **)&pVideoDecoderHeap);
     if (FAILED(hr)) {
-        fprintf(stderr, "D3D12: CreateVideoDecoderHeap failed: 0x%08lx\n", hr);
+        Log_Printf(L"D3D12: CreateVideoDecoderHeap failed: 0x%08l", hr);
         d3d12_video_decoder_cleanup();
         return -1;
     }
@@ -380,7 +381,7 @@ int d3d12_video_decoder_init(int width, int height)
     hr = ID3D12Device_CreateCommandAllocator(pD3D12Device, D3D12_COMMAND_LIST_TYPE_VIDEO_DECODE,
         &IID_ID3D12CommandAllocator, (void **)&pDecodeAllocator);
     if (FAILED(hr)) {
-        fprintf(stderr, "D3D12: CreateCommandAllocator failed: 0x%08lx\n", hr);
+        Log_Printf(L"D3D12: CreateCommandAllocator failed: 0x%08l", hr);
         d3d12_video_decoder_cleanup();
         return -1;
     }
@@ -389,7 +390,7 @@ int d3d12_video_decoder_init(int width, int height)
     hr = ID3D12Device_CreateCommandList(pD3D12Device, 0, D3D12_COMMAND_LIST_TYPE_VIDEO_DECODE,
         pDecodeAllocator, NULL, &IID_ID3D12VideoDecodeCommandList, (void **)&pDecodeCommandList);
     if (FAILED(hr)) {
-        fprintf(stderr, "D3D12: CreateCommandList failed: 0x%08lx\n", hr);
+        Log_Printf(L"D3D12: CreateCommandList failed: 0x%08l", hr);
         d3d12_video_decoder_cleanup();
         return -1;
     }
@@ -425,7 +426,7 @@ int d3d12_video_decoder_init(int width, int height)
             D3D12_HEAP_FLAG_NONE, &texDesc, D3D12_RESOURCE_STATE_COMMON, NULL,
             &IID_ID3D12Resource, (void **)&ppDecodeTextures[i]);
         if (FAILED(hr)) {
-            fprintf(stderr, "D3D12: CreateCommittedResource for decode texture %u failed: 0x%08lx\n", i, hr);
+            Log_Printf(L"D3D12: CreateCommittedResource for decode texture %u failed: 0x%08l", i, hr);
             d3d12_video_decoder_cleanup();
             return -1;
         }
@@ -446,14 +447,13 @@ int d3d12_video_decoder_init(int width, int height)
             D3D12_HEAP_FLAG_NONE, &texDesc, D3D12_RESOURCE_STATE_COMMON, NULL,
             &IID_ID3D12Resource, (void **)&ppDecodeSurfaces[i]);
         if (FAILED(hr)) {
-            fprintf(stderr, "D3D12: CreateCommittedResource for DPB surface %u failed: 0x%08lx\n", i, hr);
+            Log_Printf(L"D3D12: CreateCommittedResource for DPB surface %u failed: 0x%08l", i, hr);
             d3d12_video_decoder_cleanup();
             return -1;
         }
     }
 
-    fprintf(stdout, "D3D12: Video decoder initialized (H.264, %dx%d, %u textures, %u DPB surfaces)\n",
-            width, height, g_numDecodeTextures, g_numDecodeSurfaces);
+    Log_Printf(L"D3D12: Video decoder initialized (H.264, %dx%d, %u textures, %u DPB surfaces", width, height, g_numDecodeTextures, g_numDecodeSurfaces);
     return 0;
 }
 
@@ -494,7 +494,7 @@ int d3d12_video_upload_texture(void *data, int stride, int format)
 
 #ifdef __MINGW32__
     (void)data; (void)stride; (void)format;
-    fprintf(stderr, "D3D12: Video texture upload not supported in MinGW build\n");
+    Log_Printf(L"D3D12: Video texture upload not supported in MinGW buil");
     return -1;
 #endif
 
@@ -542,7 +542,7 @@ int d3d12_video_upload_texture(void *data, int stride, int format)
         D3D12_HEAP_FLAG_NONE, &uploadDesc, D3D12_RESOURCE_STATE_GENERIC_READ, NULL,
         &IID_ID3D12Resource, (void **)&pUploadBuffer);
     if (FAILED(hr)) {
-        fprintf(stderr, "D3D12: CreateCommittedResource for upload buffer failed: 0x%08lx\n", hr);
+        Log_Printf(L"D3D12: CreateCommittedResource for upload buffer failed: 0x%08l", hr);
         return -1;
     }
 
@@ -551,7 +551,7 @@ int d3d12_video_upload_texture(void *data, int stride, int format)
     D3D12_RANGE readRange = {0, 0};
     hr = ID3D12Resource_Map(pUploadBuffer, 0, &readRange, &pMappedData);
     if (FAILED(hr)) {
-        fprintf(stderr, "D3D12: Map upload buffer failed: 0x%08lx\n", hr);
+        Log_Printf(L"D3D12: Map upload buffer failed: 0x%08l", hr);
         SAFE_RELEASE(pUploadBuffer);
         return -1;
     }
@@ -609,17 +609,17 @@ int d3d12_video_processor_init(void)
     HRESULT hr;
 
     if (!pD3D12Device) {
-        fprintf(stderr, "D3D12: Device not initialized for video processor\n");
+        Log_Printf(L"D3D12: Device not initialized for video processo");
         return -1;
     }
 
 #ifdef __MINGW32__
-    fprintf(stderr, "D3D12: Video processor not supported in MinGW build (d3d12video.h structures may differ)\n");
+    Log_Printf(L"D3D12: Video processor not supported in MinGW build (d3d12video.h structures may differ");
     return -1;
 #endif
 
     if (!pVideoDevice) {
-        fprintf(stderr, "D3D12: Video device not initialized for video processor\n");
+        Log_Printf(L"D3D12: Video device not initialized for video processo");
         return -1;
     }
 
@@ -629,7 +629,7 @@ int d3d12_video_processor_init(void)
     hr = ID3D12Device_CreateCommandAllocator(pD3D12Device, D3D12_COMMAND_LIST_TYPE_VIDEO_PROCESS,
         &IID_ID3D12CommandAllocator, (void **)&pProcessAllocator);
     if (FAILED(hr)) {
-        fprintf(stderr, "D3D12: CreateCommandAllocator (process) failed: 0x%08lx\n", hr);
+        Log_Printf(L"D3D12: CreateCommandAllocator (process) failed: 0x%08l", hr);
         return -1;
     }
 
@@ -637,7 +637,7 @@ int d3d12_video_processor_init(void)
     hr = ID3D12Device_CreateCommandList(pD3D12Device, 0, D3D12_COMMAND_LIST_TYPE_VIDEO_PROCESS,
         pProcessAllocator, NULL, &IID_ID3D12VideoProcessCommandList, (void **)&pProcessCommandList);
     if (FAILED(hr)) {
-        fprintf(stderr, "D3D12: CreateCommandList (process) failed: 0x%08lx\n", hr);
+        Log_Printf(L"D3D12: CreateCommandList (process) failed: 0x%08l", hr);
         d3d12_video_processor_cleanup();
         return -1;
     }
@@ -671,12 +671,12 @@ int d3d12_video_processor_init(void)
         &outputStreamDesc, 1, &inputStreamDesc,
         &IID_ID3D12VideoProcessor, (void **)&pVideoProcessor);
     if (FAILED(hr)) {
-        fprintf(stderr, "D3D12: CreateVideoProcessor failed: 0x%08lx\n", hr);
+        Log_Printf(L"D3D12: CreateVideoProcessor failed: 0x%08l", hr);
         d3d12_video_processor_cleanup();
         return -1;
     }
 
-    fprintf(stdout, "D3D12: Video processor initialized (%dx%d)\n", g_width, g_height);
+    Log_Printf(L"D3D12: Video processor initialized (%dx%d", g_width, g_height);
     return 0;
 }
 
@@ -695,7 +695,7 @@ int d3d12_video_processor_render(void *input_texture, void *output_texture)
 
 #ifdef __MINGW32__
     (void)input_texture; (void)output_texture;
-    fprintf(stderr, "D3D12: Video processor render not supported in MinGW build\n");
+    Log_Printf(L"D3D12: Video processor render not supported in MinGW buil");
     return -1;
 #endif
 
@@ -773,7 +773,7 @@ int d3d12_video_present(void)
 
     HRESULT hr = IDXGISwapChain3_Present(pSwapChain, 1, 0);
     if (FAILED(hr)) {
-        fprintf(stderr, "D3D12: Present failed: 0x%08lx\n", hr);
+        Log_Printf(L"D3D12: Present failed: 0x%08l", hr);
         return -1;
     }
 

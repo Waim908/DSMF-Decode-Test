@@ -6,6 +6,7 @@
 #include "dxva2_helper.h"
 #include "d3d11_video_helper.h"
 #include "d3d12_video_helper.h"
+#include "log.h"
 
 #include <windows.h>
 #include <mmsystem.h>
@@ -266,7 +267,7 @@ static int mf_init_audio(int channels, int sample_rate, int bits_per_sample)
 
     mr = waveOutOpen(&g_hWaveOut, WAVE_MAPPER, &wfx, 0, 0, CALLBACK_NULL);
     if (mr != MMSYSERR_NOERROR) {
-        fprintf(stderr, "MF Audio: waveOutOpen failed: %d\n", (int)mr);
+        Log_Printf(L"MF Audio: waveOutOpen failed: %d", (int)mr);
         return -1;
     }
 
@@ -282,7 +283,7 @@ static int mf_init_audio(int channels, int sample_rate, int bits_per_sample)
     g_audioBufIdx = 0;
     g_audioThreadStop = 0;
 
-    fprintf(stdout, "MF Audio: %dHz %dch %dbit, %d buffers x %d bytes\n",
+    Log_Printf(L"MF Audio: %dHz %dch %dbit, %d buffers x %d bytes",
             sample_rate, channels, bits_per_sample, AUDIO_BUFFERS, AUDIO_BUFFER_SIZE);
     return 0;
 }
@@ -291,7 +292,7 @@ static int mf_init_audio(int channels, int sample_rate, int bits_per_sample)
 static DWORD WINAPI mf_audio_thread(LPVOID param)
 {
     (void)param;
-    fprintf(stdout, "MF Audio: thread started\n");
+    Log_Printf(L"MF Audio: thread starte");
 
     while (!g_audioThreadStop && g_reader && g_active) {
         IMFMediaBuffer *abuf = NULL;
@@ -364,7 +365,7 @@ static DWORD WINAPI mf_audio_thread(LPVOID param)
         IMFSample_Release(asample);
     }
 
-    fprintf(stdout, "MF Audio: thread exited\n");
+    Log_Printf(L"MF Audio: thread exite");
     return 0;
 }
 
@@ -402,7 +403,7 @@ int mf_open(const wchar_t *filepath, HWND hwnd_display, int enable_dxva2)
     g_freq = freq.QuadPart;
 
     hr = MFStartup(MF_VERSION, 0);
-    if (FAILED(hr)) { fprintf(stderr, "MF: MFStartup failed: 0x%08lx\n", hr); return -1; }
+    if (FAILED(hr)) { Log_Printf(L"MF: MFStartup failed: 0x%08l", hr); return -1; }
 
     g_hwnd  = hwnd_display;
     g_dxva2 = enable_dxva2;
@@ -414,7 +415,7 @@ int mf_open(const wchar_t *filepath, HWND hwnd_display, int enable_dxva2)
 
     hr = MFCreateSourceReaderFromURL(filepath, attrs, &g_reader);
     if (attrs) IMFAttributes_Release(attrs);
-    if (FAILED(hr)) { fprintf(stderr, "MF: MFCreateSourceReaderFromURL failed: 0x%08lx\n", hr); MFShutdown(); return -1; }
+    if (FAILED(hr)) { Log_Printf(L"MF: MFCreateSourceReaderFromURL failed: 0x%08l", hr); MFShutdown(); return -1; }
 
     /* Configure video: try NV12, then YUY2, then RGB32 */
     hr = MFCreateMediaType(&vtype);
@@ -475,8 +476,7 @@ int mf_open(const wchar_t *filepath, HWND hwnd_display, int enable_dxva2)
             /* Video codec name from native subtype */
             mf_subtype_to_name(&nativeSubtype, g_videoCodec, 64);
             IMFMediaType_Release(vtype); vtype = NULL;
-            fprintf(stdout, "MF: Video %dx%d codec=%ls bitrate=%u fps=%u/%u\n",
-                    g_width, g_height, g_videoCodec, g_videoBitrate, g_videoFPS_Num, g_videoFPS_Den);
+            Log_Printf(L"MF: Video %dx%d codec=%ls bitrate=%u fps=%u/%", g_width, g_height, g_videoCodec, g_videoBitrate, g_videoFPS_Num, g_videoFPS_Den);
         }
     }
 
@@ -484,9 +484,9 @@ int mf_open(const wchar_t *filepath, HWND hwnd_display, int enable_dxva2)
     if (enable_dxva2 == 1 && g_width > 0 && g_height > 0) {
         /* DXVA2 mode */
 #ifdef __MINGW32__
-        fprintf(stdout, "MF: Initializing DXVA2 hardware acceleration (MinGW build)...\n");
+        Log_Printf(L"MF: Initializing DXVA2 hardware acceleration (MinGW build)..");
 #else
-        fprintf(stdout, "MF: Initializing DXVA2 hardware acceleration...\n");
+        Log_Printf(L"MF: Initializing DXVA2 hardware acceleration..");
 #endif
 
         /* Initialize DXVA2 device */
@@ -506,34 +506,34 @@ int mf_open(const wchar_t *filepath, HWND hwnd_display, int enable_dxva2)
                 if (dxva2_processor_init(DXVA2_VideoFormat_NV12, DXVA2_VideoFormat_RGB32) == 0) {
                     g_dxva2_initialized = 1;
                     g_dxva2_use_hw_render = 1;
-                    fprintf(stdout, "MF: DXVA2 hardware acceleration enabled\n");
+                    Log_Printf(L"MF: DXVA2 hardware acceleration enable");
                 } else {
-                    fprintf(stderr, "MF: DXVA2 processor init failed, falling back to software\n");
+                    Log_Printf(L"MF: DXVA2 processor init failed, falling back to softwar");
                     dxva2_decoder_cleanup();
                 }
             } else {
-                fprintf(stderr, "MF: DXVA2 decoder init failed, falling back to software\n");
+                Log_Printf(L"MF: DXVA2 decoder init failed, falling back to softwar");
             }
         } else {
-            fprintf(stderr, "MF: DXVA2 device init failed, falling back to software\n");
+            Log_Printf(L"MF: DXVA2 device init failed, falling back to softwar");
         }
     } else if (enable_dxva2 == 2 && g_width > 0 && g_height > 0) {
         /* D3D11 mode */
 #ifdef __MINGW32__
-        fprintf(stdout, "MF: Initializing D3D11 hardware acceleration (MinGW build, may have limited support)...\n");
+        Log_Printf(L"MF: Initializing D3D11 hardware acceleration (MinGW build, may have limited support)..");
 #else
-        fprintf(stdout, "MF: Initializing D3D11 hardware acceleration...\n");
+        Log_Printf(L"MF: Initializing D3D11 hardware acceleration..");
 #endif
 
         /* Check if D3D11 device is already initialized */
         if (!d3d11_video_is_initialized()) {
             /* Initialize D3D11 device */
             if (d3d11_video_init(hwnd_display, g_width, g_height) != 0) {
-                fprintf(stderr, "MF: D3D11 device init failed, falling back to software\n");
+                Log_Printf(L"MF: D3D11 device init failed, falling back to softwar");
                 goto d3d11_failed;
             }
         } else {
-            fprintf(stdout, "MF: D3D11 device already initialized, reusing\n");
+            Log_Printf(L"MF: D3D11 device already initialized, reusin");
         }
 
         /* Configure D3D11 decoder */
@@ -551,21 +551,21 @@ int mf_open(const wchar_t *filepath, HWND hwnd_display, int enable_dxva2)
             if (d3d11_video_processor_init() == 0) {
                 g_d3d11_initialized = 1;
                 g_d3d11_use_hw_render = 1;
-                fprintf(stdout, "MF: D3D11 hardware acceleration enabled\n");
+                Log_Printf(L"MF: D3D11 hardware acceleration enable");
             } else {
-                fprintf(stderr, "MF: D3D11 processor init failed, falling back to software\n");
+                Log_Printf(L"MF: D3D11 processor init failed, falling back to softwar");
                 d3d11_video_decoder_cleanup();
             }
         } else {
-            fprintf(stderr, "MF: D3D11 decoder init failed, falling back to software\n");
+            Log_Printf(L"MF: D3D11 decoder init failed, falling back to softwar");
         }
         d3d11_failed:;
     } else if (enable_dxva2 == 3 && g_width > 0 && g_height > 0) {
         /* D3D12 mode - uses software decoding (D3D12 rendering not yet implemented) */
 #ifdef __MINGW32__
-        fprintf(stdout, "MF: D3D12 mode (MinGW build, software decoding only - D3D12 video API not supported)\n");
+        Log_Printf(L"MF: D3D12 mode (MinGW build, software decoding only - D3D12 video API not supported");
 #else
-        fprintf(stdout, "MF: D3D12 mode (software decoding)\n");
+        Log_Printf(L"MF: D3D12 mode (software decoding");
 #endif
     }
 
@@ -579,7 +579,7 @@ int mf_open(const wchar_t *filepath, HWND hwnd_display, int enable_dxva2)
             mf_subtype_to_name(&audioSubtype, g_audioCodec, 64);
         if (SUCCEEDED(IMFMediaType_GetUINT32(atype, &MF_MT_AVG_BITRATE, &abitrate)))
             g_audioBitrate = abitrate;
-        fprintf(stdout, "MF: Audio codec=%ls bitrate=%u\n", g_audioCodec, g_audioBitrate);
+        Log_Printf(L"MF: Audio codec=%ls bitrate=%", g_audioCodec, g_audioBitrate);
         IMFMediaType_Release(atype); atype = NULL;
     }
 
@@ -622,7 +622,7 @@ int mf_open(const wchar_t *filepath, HWND hwnd_display, int enable_dxva2)
     if (g_hWaveOut) {
         g_hAudioThread = CreateThread(NULL, 0, mf_audio_thread, NULL, 0, NULL);
         if (!g_hAudioThread) {
-            fprintf(stderr, "MF: Failed to create audio thread\n");
+            Log_Printf(L"MF: Failed to create audio threa");
         }
     }
 
@@ -822,11 +822,11 @@ int mf_render_next_frame(void)
             (DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM,
             0, &stream_idx, &flags, &ts, &sample);
 
-        if (FAILED(hr)) { fprintf(stderr, "MF: ReadSample failed: 0x%08lx\n", hr); return -1; }
+        if (FAILED(hr)) { Log_Printf(L"MF: ReadSample failed: 0x%08l", hr); return -1; }
 
         if (flags & MF_SOURCE_READERF_ENDOFSTREAM) {
             g_eof = 1;
-            fprintf(stdout, "MF: EOF, rendered %d frames, dropped %d\n", g_frameCount, g_droppedFrames);
+            Log_Printf(L"MF: EOF, rendered %d frames, dropped %", g_frameCount, g_droppedFrames);
             return 1;
         }
         if (flags & MF_SOURCE_READERF_STREAMTICK) return 0;

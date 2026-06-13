@@ -3,6 +3,7 @@
  * Manages D3D11 device, video decoder, and video processor.
  */
 #include "d3d11_video_helper.h"
+#include "log.h"
 
 #include <d3d11.h>
 #include <dxgi1_2.h>
@@ -80,7 +81,7 @@ int d3d11_video_init(HWND hwnd, int width, int height)
     );
 
     if (FAILED(hr)) {
-        fprintf(stderr, "D3D11: CreateDevice failed: 0x%08lx\n", hr);
+        Log_Printf(L"D3D11: CreateDevice failed: 0x%08l", hr);
         return -1;
     }
 
@@ -88,7 +89,7 @@ int d3d11_video_init(HWND hwnd, int width, int height)
     IDXGIDevice *pDXGIDevice = NULL;
     hr = ID3D11Device_QueryInterface(pD3D11Device, &IID_IDXGIDevice, (void **)&pDXGIDevice);
     if (FAILED(hr)) {
-        fprintf(stderr, "D3D11: QueryInterface IDXGIDevice failed: 0x%08lx\n", hr);
+        Log_Printf(L"D3D11: QueryInterface IDXGIDevice failed: 0x%08l", hr);
         d3d11_video_cleanup();
         return -1;
     }
@@ -97,7 +98,7 @@ int d3d11_video_init(HWND hwnd, int width, int height)
     hr = IDXGIDevice_GetAdapter(pDXGIDevice, &pAdapter);
     SAFE_RELEASE(pDXGIDevice);
     if (FAILED(hr)) {
-        fprintf(stderr, "D3D11: GetAdapter failed: 0x%08lx\n", hr);
+        Log_Printf(L"D3D11: GetAdapter failed: 0x%08l", hr);
         d3d11_video_cleanup();
         return -1;
     }
@@ -106,7 +107,7 @@ int d3d11_video_init(HWND hwnd, int width, int height)
     hr = IDXGIAdapter_GetParent(pAdapter, &IID_IDXGIFactory2, (void **)&pFactory);
     SAFE_RELEASE(pAdapter);
     if (FAILED(hr)) {
-        fprintf(stderr, "D3D11: GetParent IDXGIFactory2 failed: 0x%08lx\n", hr);
+        Log_Printf(L"D3D11: GetParent IDXGIFactory2 failed: 0x%08l", hr);
         d3d11_video_cleanup();
         return -1;
     }
@@ -125,7 +126,7 @@ int d3d11_video_init(HWND hwnd, int width, int height)
     hr = IDXGIFactory2_CreateSwapChainForHwnd(pFactory, (IUnknown *)pD3D11Device, hwnd, &scd, NULL, NULL, &pSwapChain);
     SAFE_RELEASE(pFactory);
     if (FAILED(hr)) {
-        fprintf(stderr, "D3D11: CreateSwapChainForHwnd failed: 0x%08lx\n", hr);
+        Log_Printf(L"D3D11: CreateSwapChainForHwnd failed: 0x%08l", hr);
         d3d11_video_cleanup();
         return -1;
     }
@@ -133,7 +134,7 @@ int d3d11_video_init(HWND hwnd, int width, int height)
     /* Get back buffer */
     hr = IDXGISwapChain1_GetBuffer(pSwapChain, 0, &IID_ID3D11Texture2D, (void **)&backBuffer);
     if (FAILED(hr)) {
-        fprintf(stderr, "D3D11: GetBuffer failed: 0x%08lx\n", hr);
+        Log_Printf(L"D3D11: GetBuffer failed: 0x%08l", hr);
         d3d11_video_cleanup();
         return -1;
     }
@@ -142,7 +143,7 @@ int d3d11_video_init(HWND hwnd, int width, int height)
     hr = ID3D11Device_CreateRenderTargetView(pD3D11Device, (ID3D11Resource *)backBuffer, NULL, &pRenderTargetView);
     SAFE_RELEASE(backBuffer);
     if (FAILED(hr)) {
-        fprintf(stderr, "D3D11: CreateRenderTargetView failed: 0x%08lx\n", hr);
+        Log_Printf(L"D3D11: CreateRenderTargetView failed: 0x%08l", hr);
         d3d11_video_cleanup();
         return -1;
     }
@@ -151,8 +152,7 @@ int d3d11_video_init(HWND hwnd, int width, int height)
     g_width = width;
     g_height = height;
 
-    fprintf(stdout, "D3D11: Device created successfully (%dx%d, feature level %d.%d)\n",
-            width, height, (featureLevel >> 12) & 0xF, (featureLevel >> 8) & 0xF);
+    Log_Printf(L"D3D11: Device created successfully (%dx%d, feature level %d.%d", width, height, (featureLevel >> 12) & 0xF, (featureLevel >> 8) & 0xF);
     return 0;
 }
 
@@ -172,7 +172,7 @@ int d3d11_video_check_support(void)
     if (SUCCEEDED(hr) && device) {
         device->lpVtbl->Release(device);
 #ifdef __MINGW32__
-        fprintf(stdout, "D3D11: Basic device available in MinGW build (video decode/processor may be limited)\n");
+        Log_Printf(L"D3D11: Basic device available in MinGW build (video decode/processor may be limited");
 #endif
         return 1;
     }
@@ -270,7 +270,7 @@ int d3d11_video_decoder_init(const D3D11VideoDecoderConfig *config)
     if (!pD3D11Device || !config) return -1;
 
 #ifdef __MINGW32__
-    fprintf(stdout, "D3D11: Video decoder init in MinGW build (may have limited support)\n");
+    Log_Printf(L"D3D11: Video decoder init in MinGW build (may have limited support");
 #endif
 
     /* Cleanup previous decoder */
@@ -279,14 +279,14 @@ int d3d11_video_decoder_init(const D3D11VideoDecoderConfig *config)
     /* Query video device interface */
     hr = ID3D11Device_QueryInterface(pD3D11Device, &IID_ID3D11VideoDevice, (void **)&pVideoDevice);
     if (FAILED(hr)) {
-        fprintf(stderr, "D3D11: QueryInterface ID3D11VideoDevice failed: 0x%08lx\n", hr);
+        Log_Printf(L"D3D11: QueryInterface ID3D11VideoDevice failed: 0x%08l", hr);
         return -1;
     }
 
     /* Query video context interface */
     hr = ID3D11DeviceContext_QueryInterface(pD3D11Context, &IID_ID3D11VideoContext, (void **)&pVideoContext);
     if (FAILED(hr)) {
-        fprintf(stderr, "D3D11: QueryInterface ID3D11VideoContext failed: 0x%08lx\n", hr);
+        Log_Printf(L"D3D11: QueryInterface ID3D11VideoContext failed: 0x%08l", hr);
         d3d11_video_decoder_cleanup();
         return -1;
     }
@@ -304,13 +304,13 @@ int d3d11_video_decoder_init(const D3D11VideoDecoderConfig *config)
         hr = ID3D11VideoDevice_CheckVideoDecoderFormat(pVideoDevice, &profiles[i], DXGI_FORMAT_NV12, &supported);
         if (SUCCEEDED(hr) && supported) {
             g_decoderProfile = profiles[i];
-            fprintf(stdout, "D3D11: Using decoder profile %d\n", i);
+            Log_Printf(L"D3D11: Using decoder profile %", i);
             break;
         }
     }
 
     if (IsEqualGUID(&g_decoderProfile, &GUID_NULL)) {
-        fprintf(stderr, "D3D11: No supported decoder profile found\n");
+        Log_Printf(L"D3D11: No supported decoder profile foun");
         d3d11_video_decoder_cleanup();
         return -1;
     }
@@ -333,7 +333,7 @@ int d3d11_video_decoder_init(const D3D11VideoDecoderConfig *config)
 
     hr = ID3D11VideoDevice_CreateVideoDecoder(pVideoDevice, &desc, &config_desc, &pVideoDecoder);
     if (FAILED(hr)) {
-        fprintf(stderr, "D3D11: CreateVideoDecoder failed: 0x%08lx\n", hr);
+        Log_Printf(L"D3D11: CreateVideoDecoder failed: 0x%08l", hr);
         d3d11_video_decoder_cleanup();
         return -1;
     }
@@ -347,7 +347,7 @@ int d3d11_video_decoder_init(const D3D11VideoDecoderConfig *config)
     ppDecodeViews = (ID3D11VideoDecoderOutputView **)malloc(g_numTextures * sizeof(ID3D11VideoDecoderOutputView *));
 
     if (!ppDecodeTextures || !ppDecodeViews) {
-        fprintf(stderr, "D3D11: Memory allocation failed\n");
+        Log_Printf(L"D3D11: Memory allocation faile");
         d3d11_video_decoder_cleanup();
         return -1;
     }
@@ -370,7 +370,7 @@ int d3d11_video_decoder_init(const D3D11VideoDecoderConfig *config)
     for (UINT i = 0; i < g_numTextures; i++) {
         hr = ID3D11Device_CreateTexture2D(pD3D11Device, &texDesc, NULL, &ppDecodeTextures[i]);
         if (FAILED(hr)) {
-            fprintf(stderr, "D3D11: CreateTexture2D failed for surface %u: 0x%08lx\n", i, hr);
+            Log_Printf(L"D3D11: CreateTexture2D failed for surface %u: 0x%08l", i, hr);
             d3d11_video_decoder_cleanup();
             return -1;
         }
@@ -384,15 +384,14 @@ int d3d11_video_decoder_init(const D3D11VideoDecoderConfig *config)
         hr = ID3D11VideoDevice_CreateVideoDecoderOutputView(pVideoDevice,
             (ID3D11Resource *)ppDecodeTextures[i], &viewDesc, &ppDecodeViews[i]);
         if (FAILED(hr)) {
-            fprintf(stderr, "D3D11: CreateVideoDecoderOutputView failed for surface %u: 0x%08lx\n", i, hr);
+            Log_Printf(L"D3D11: CreateVideoDecoderOutputView failed for surface %u: 0x%08l", i, hr);
             d3d11_video_decoder_cleanup();
             return -1;
         }
     }
 
     g_nextTexture = 0;
-    fprintf(stdout, "D3D11: Video decoder initialized (%dx%d, %d surfaces)\n",
-            config->width, config->height, g_numTextures);
+    Log_Printf(L"D3D11: Video decoder initialized (%dx%d, %d surfaces", config->width, config->height, g_numTextures);
     return 0;
 }
 
@@ -404,7 +403,7 @@ int d3d11_video_decoder_decode(const BYTE *buffer, DWORD size, LONGLONG pts)
 #ifdef __MINGW32__
     /* D3D11 video decode may not work correctly in MinGW due to structure differences */
     (void)buffer; (void)size; (void)pts;
-    fprintf(stderr, "D3D11: Video decode not reliable in MinGW build, skipping frame\n");
+    Log_Printf(L"D3D11: Video decode not reliable in MinGW build, skipping fram");
     return -1;
 #endif
 
@@ -416,7 +415,7 @@ int d3d11_video_decoder_decode(const BYTE *buffer, DWORD size, LONGLONG pts)
     hr = ID3D11VideoContext_DecoderBeginFrame(pVideoContext, pVideoDecoder,
         ppDecodeViews[viewIndex], 0, NULL);
     if (FAILED(hr)) {
-        fprintf(stderr, "D3D11: DecoderBeginFrame failed: 0x%08lx\n", hr);
+        Log_Printf(L"D3D11: DecoderBeginFrame failed: 0x%08l", hr);
         return -1;
     }
 
@@ -429,7 +428,7 @@ int d3d11_video_decoder_decode(const BYTE *buffer, DWORD size, LONGLONG pts)
 
     hr = ID3D11VideoContext_SubmitDecoderBuffers(pVideoContext, pVideoDecoder, 1, buffers);
     if (FAILED(hr)) {
-        fprintf(stderr, "D3D11: SubmitDecoderBuffers failed: 0x%08lx\n", hr);
+        Log_Printf(L"D3D11: SubmitDecoderBuffers failed: 0x%08l", hr);
         ID3D11VideoContext_DecoderEndFrame(pVideoContext, pVideoDecoder);
         return -1;
     }
@@ -437,7 +436,7 @@ int d3d11_video_decoder_decode(const BYTE *buffer, DWORD size, LONGLONG pts)
     /* End frame */
     hr = ID3D11VideoContext_DecoderEndFrame(pVideoContext, pVideoDecoder);
     if (FAILED(hr)) {
-        fprintf(stderr, "D3D11: DecoderEndFrame failed: 0x%08lx\n", hr);
+        Log_Printf(L"D3D11: DecoderEndFrame failed: 0x%08l", hr);
         return -1;
     }
 
@@ -493,7 +492,7 @@ int d3d11_video_processor_init(void)
     if (!pD3D11Device || !pD3D11Context) return -1;
 
 #ifdef __MINGW32__
-    fprintf(stdout, "D3D11: Video processor init in MinGW build (may have limited support)\n");
+    Log_Printf(L"D3D11: Video processor init in MinGW build (may have limited support");
 #endif
 
     /* Cleanup previous processor */
@@ -503,7 +502,7 @@ int d3d11_video_processor_init(void)
     if (!pVideoDevice) {
         hr = ID3D11Device_QueryInterface(pD3D11Device, &IID_ID3D11VideoDevice, (void **)&pVideoDevice);
         if (FAILED(hr)) {
-            fprintf(stderr, "D3D11: QueryInterface ID3D11VideoDevice failed: 0x%08lx\n", hr);
+            Log_Printf(L"D3D11: QueryInterface ID3D11VideoDevice failed: 0x%08l", hr);
             return -1;
         }
     }
@@ -511,7 +510,7 @@ int d3d11_video_processor_init(void)
     if (!pVideoContext) {
         hr = ID3D11DeviceContext_QueryInterface(pD3D11Context, &IID_ID3D11VideoContext, (void **)&pVideoContext);
         if (FAILED(hr)) {
-            fprintf(stderr, "D3D11: QueryInterface ID3D11VideoContext failed: 0x%08lx\n", hr);
+            Log_Printf(L"D3D11: QueryInterface ID3D11VideoContext failed: 0x%08l", hr);
             return -1;
         }
     }
@@ -527,19 +526,19 @@ int d3d11_video_processor_init(void)
 
     hr = ID3D11VideoDevice_CreateVideoProcessorEnumerator(pVideoDevice, &desc, &pProcessorEnum);
     if (FAILED(hr)) {
-        fprintf(stderr, "D3D11: CreateVideoProcessorEnumerator failed: 0x%08lx\n", hr);
+        Log_Printf(L"D3D11: CreateVideoProcessorEnumerator failed: 0x%08l", hr);
         return -1;
     }
 
     /* Create video processor */
     hr = ID3D11VideoDevice_CreateVideoProcessor(pVideoDevice, pProcessorEnum, 0, &pVideoProcessor);
     if (FAILED(hr)) {
-        fprintf(stderr, "D3D11: CreateVideoProcessor failed: 0x%08lx\n", hr);
+        Log_Printf(L"D3D11: CreateVideoProcessor failed: 0x%08l", hr);
         d3d11_video_processor_cleanup();
         return -1;
     }
 
-    fprintf(stdout, "D3D11: Video processor initialized\n");
+    Log_Printf(L"D3D11: Video processor initialize");
     return 0;
 }
 
@@ -563,7 +562,7 @@ int d3d11_video_processor_render(ID3D11Texture2D *src_texture,
     hr = ID3D11VideoDevice_CreateVideoProcessorInputView(pVideoDevice,
         (ID3D11Resource *)src_texture, pProcessorEnum, &inputDesc, &inputView);
     if (FAILED(hr)) {
-        fprintf(stderr, "D3D11: CreateVideoProcessorInputView failed: 0x%08lx\n", hr);
+        Log_Printf(L"D3D11: CreateVideoProcessorInputView failed: 0x%08l", hr);
         return -1;
     }
 
@@ -571,7 +570,7 @@ int d3d11_video_processor_render(ID3D11Texture2D *src_texture,
     ID3D11Texture2D *backBuffer = NULL;
     hr = IDXGISwapChain1_GetBuffer(pSwapChain, 0, &IID_ID3D11Texture2D, (void **)&backBuffer);
     if (FAILED(hr)) {
-        fprintf(stderr, "D3D11: GetBuffer failed: 0x%08lx\n", hr);
+        Log_Printf(L"D3D11: GetBuffer failed: 0x%08l", hr);
         SAFE_RELEASE(inputView);
         return -1;
     }
@@ -587,7 +586,7 @@ int d3d11_video_processor_render(ID3D11Texture2D *src_texture,
         (ID3D11Resource *)backBuffer, pProcessorEnum, &outputDesc, &outputView);
     SAFE_RELEASE(backBuffer);
     if (FAILED(hr)) {
-        fprintf(stderr, "D3D11: CreateVideoProcessorOutputView failed: 0x%08lx\n", hr);
+        Log_Printf(L"D3D11: CreateVideoProcessorOutputView failed: 0x%08l", hr);
         SAFE_RELEASE(inputView);
         return -1;
     }
@@ -609,7 +608,7 @@ int d3d11_video_processor_render(ID3D11Texture2D *src_texture,
     SAFE_RELEASE(outputView);
 
     if (FAILED(hr)) {
-        fprintf(stderr, "D3D11: VideoProcessorBlt failed: 0x%08lx\n", hr);
+        Log_Printf(L"D3D11: VideoProcessorBlt failed: 0x%08l", hr);
         return -1;
     }
 
@@ -647,7 +646,7 @@ ID3D11Texture2D *d3d11_video_create_texture(UINT width, UINT height, DXGI_FORMAT
 
     hr = ID3D11Device_CreateTexture2D(pD3D11Device, &desc, NULL, &texture);
     if (FAILED(hr)) {
-        fprintf(stderr, "D3D11: CreateTexture2D failed: 0x%08lx\n", hr);
+        Log_Printf(L"D3D11: CreateTexture2D failed: 0x%08l", hr);
         return NULL;
     }
 
@@ -679,7 +678,7 @@ int d3d11_video_upload_texture(ID3D11Texture2D *texture, const BYTE *data, int s
     ID3D11Texture2D *stagingTexture = NULL;
     hr = ID3D11Device_CreateTexture2D(pD3D11Device, &stagingDesc, NULL, &stagingTexture);
     if (FAILED(hr)) {
-        fprintf(stderr, "D3D11: Create staging texture failed: 0x%08lx\n", hr);
+        Log_Printf(L"D3D11: Create staging texture failed: 0x%08l", hr);
         return -1;
     }
 
@@ -687,7 +686,7 @@ int d3d11_video_upload_texture(ID3D11Texture2D *texture, const BYTE *data, int s
     D3D11_MAPPED_SUBRESOURCE mapped;
     hr = ID3D11DeviceContext_Map(pD3D11Context, (ID3D11Resource *)stagingTexture, 0, D3D11_MAP_WRITE, 0, &mapped);
     if (FAILED(hr)) {
-        fprintf(stderr, "D3D11: Map staging texture failed: 0x%08lx\n", hr);
+        Log_Printf(L"D3D11: Map staging texture failed: 0x%08l", hr);
         SAFE_RELEASE(stagingTexture);
         return -1;
     }
@@ -722,7 +721,7 @@ int d3d11_video_upload_texture(ID3D11Texture2D *texture, const BYTE *data, int s
             memcpy((BYTE *)mapped.pData + y * mapped.RowPitch, data + y * stride, rowSize);
         }
     } else {
-        fprintf(stderr, "D3D11: Unsupported format for upload: %d\n", format);
+        Log_Printf(L"D3D11: Unsupported format for upload: %", format);
         ID3D11DeviceContext_Unmap(pD3D11Context, (ID3D11Resource *)stagingTexture, 0);
         SAFE_RELEASE(stagingTexture);
         return -1;

@@ -3,6 +3,7 @@
  * Uses IGraphBuilder + IMediaControl + IVideoWindow for playback.
  */
 #include "directshow_decoder.h"
+#include "log.h"
 
 #include <dshow.h>
 #include <stdio.h>
@@ -87,24 +88,24 @@ int ds_open(const wchar_t *filepath, HWND hwnd_display)
     /* Create the Filter Graph Manager */
     hr = CoCreateInstance(&CLSID_FilterGraph, NULL, CLSCTX_INPROC_SERVER,
                           &IID_IGraphBuilder, (void **)&pGraph);
-    if (FAILED(hr)) { fprintf(stderr, "DirectShow: Failed to create FilterGraph: 0x%08lx\n", hr); return -1; }
+    if (FAILED(hr)) { Log_Printf(L"DirectShow: Failed to create FilterGraph: 0x%08l", hr); return -1; }
 
     /* Query interfaces */
     hr = IGraphBuilder_QueryInterface(pGraph, &IID_IMediaControl, (void **)&pControl);
-    if (FAILED(hr)) fprintf(stderr, "DirectShow: Failed to query IMediaControl: 0x%08lx\n", hr);
+    if (FAILED(hr)) Log_Printf(L"DirectShow: Failed to query IMediaControl: 0x%08l", hr);
     hr = IGraphBuilder_QueryInterface(pGraph, &IID_IMediaEvent,   (void **)&pEvent);
-    if (FAILED(hr)) fprintf(stderr, "DirectShow: Failed to query IMediaEvent: 0x%08lx\n", hr);
+    if (FAILED(hr)) Log_Printf(L"DirectShow: Failed to query IMediaEvent: 0x%08l", hr);
     hr = IGraphBuilder_QueryInterface(pGraph, &IID_IVideoWindow,  (void **)&pVideo);
-    if (FAILED(hr)) fprintf(stderr, "DirectShow: Failed to query IVideoWindow: 0x%08lx\n", hr);
+    if (FAILED(hr)) Log_Printf(L"DirectShow: Failed to query IVideoWindow: 0x%08l", hr);
     hr = IGraphBuilder_QueryInterface(pGraph, &IID_IBasicVideo,   (void **)&pBasicVideo);
-    if (FAILED(hr)) fprintf(stderr, "DirectShow: Failed to query IBasicVideo: 0x%08lx\n", hr);
+    if (FAILED(hr)) Log_Printf(L"DirectShow: Failed to query IBasicVideo: 0x%08l", hr);
     hr = IGraphBuilder_QueryInterface(pGraph, &IID_IBasicAudio,   (void **)&pAudio);
-    if (FAILED(hr)) fprintf(stderr, "DirectShow: Failed to query IBasicAudio: 0x%08lx\n", hr);
+    if (FAILED(hr)) Log_Printf(L"DirectShow: Failed to query IBasicAudio: 0x%08l", hr);
     hr = IGraphBuilder_QueryInterface(pGraph, &IID_IMediaSeeking, (void **)&pSeeking);
-    if (FAILED(hr)) fprintf(stderr, "DirectShow: Failed to query IMediaSeeking: 0x%08lx\n", hr);
+    if (FAILED(hr)) Log_Printf(L"DirectShow: Failed to query IMediaSeeking: 0x%08l", hr);
 
     if (!pControl || !pVideo) {
-        fprintf(stderr, "DirectShow: Failed to query required interfaces\n");
+        Log_Printf(L"DirectShow: Failed to query required interface");
         ds_cleanup();
         return -1;
     }
@@ -112,7 +113,7 @@ int ds_open(const wchar_t *filepath, HWND hwnd_display)
     /* Add source filter for the file */
     hr = IGraphBuilder_AddSourceFilter(pGraph, filepath, L"Source", &pSource);
     if (FAILED(hr)) {
-        fprintf(stderr, "DirectShow: Failed to add source filter for '%ls': 0x%08lx\n", filepath, hr);
+        Log_Printf(L"DirectShow: Failed to add source filter for '%ls': 0x%08l", filepath, hr);
         ds_cleanup();
         return -1;
     }
@@ -120,7 +121,7 @@ int ds_open(const wchar_t *filepath, HWND hwnd_display)
     /* Render all output pins (auto-connects decoder + renderer) */
     hr = IGraphBuilder_RenderFile(pGraph, filepath, NULL);
     if (FAILED(hr)) {
-        fprintf(stderr, "DirectShow: RenderFile failed: 0x%08lx\n", hr);
+        Log_Printf(L"DirectShow: RenderFile failed: 0x%08l", hr);
         if (pSource) IBaseFilter_Release(pSource);
         ds_cleanup();
         return -1;
@@ -147,7 +148,7 @@ int ds_open(const wchar_t *filepath, HWND hwnd_display)
             if (vw > 0 && vh > 0) {
                 g_video_w = vw;
                 g_video_h = vh;
-                fprintf(stdout, "DirectShow: Native video size %ldx%ld\n", vw, vh);
+                Log_Printf(L"DirectShow: Native video size %ldx%l", vw, vh);
             }
         }
 
@@ -171,24 +172,24 @@ int ds_open_dxva2(const wchar_t *filepath, HWND hwnd_display, int enable_dxva2)
     /* Create the Filter Graph Manager */
     hr = CoCreateInstance(&CLSID_FilterGraph, NULL, CLSCTX_INPROC_SERVER,
                           &IID_IGraphBuilder, (void **)&pGraph);
-    if (FAILED(hr)) { fprintf(stderr, "DirectShow: Failed to create FilterGraph: 0x%08lx\n", hr); return -1; }
+    if (FAILED(hr)) { Log_Printf(L"DirectShow: Failed to create FilterGraph: 0x%08l", hr); return -1; }
 
     /* Query interfaces */
     hr = IGraphBuilder_QueryInterface(pGraph, &IID_IMediaControl, (void **)&pControl);
-    if (FAILED(hr)) fprintf(stderr, "DirectShow: Failed to query IMediaControl: 0x%08lx\n", hr);
+    if (FAILED(hr)) Log_Printf(L"DirectShow: Failed to query IMediaControl: 0x%08l", hr);
     hr = IGraphBuilder_QueryInterface(pGraph, &IID_IMediaEvent,   (void **)&pEvent);
-    if (FAILED(hr)) fprintf(stderr, "DirectShow: Failed to query IMediaEvent: 0x%08lx\n", hr);
+    if (FAILED(hr)) Log_Printf(L"DirectShow: Failed to query IMediaEvent: 0x%08l", hr);
     hr = IGraphBuilder_QueryInterface(pGraph, &IID_IVideoWindow,  (void **)&pVideo);
-    if (FAILED(hr)) fprintf(stderr, "DirectShow: Failed to query IVideoWindow: 0x%08lx\n", hr);
+    if (FAILED(hr)) Log_Printf(L"DirectShow: Failed to query IVideoWindow: 0x%08l", hr);
     hr = IGraphBuilder_QueryInterface(pGraph, &IID_IBasicVideo,   (void **)&pBasicVideo);
-    if (FAILED(hr)) fprintf(stderr, "DirectShow: Failed to query IBasicVideo: 0x%08lx\n", hr);
+    if (FAILED(hr)) Log_Printf(L"DirectShow: Failed to query IBasicVideo: 0x%08l", hr);
     hr = IGraphBuilder_QueryInterface(pGraph, &IID_IBasicAudio,   (void **)&pAudio);
-    if (FAILED(hr)) fprintf(stderr, "DirectShow: Failed to query IBasicAudio: 0x%08lx\n", hr);
+    if (FAILED(hr)) Log_Printf(L"DirectShow: Failed to query IBasicAudio: 0x%08l", hr);
     hr = IGraphBuilder_QueryInterface(pGraph, &IID_IMediaSeeking, (void **)&pSeeking);
-    if (FAILED(hr)) fprintf(stderr, "DirectShow: Failed to query IMediaSeeking: 0x%08lx\n", hr);
+    if (FAILED(hr)) Log_Printf(L"DirectShow: Failed to query IMediaSeeking: 0x%08l", hr);
 
     if (!pControl || !pVideo) {
-        fprintf(stderr, "DirectShow: Failed to query required interfaces\n");
+        Log_Printf(L"DirectShow: Failed to query required interface");
         ds_cleanup();
         return -1;
     }
@@ -196,7 +197,7 @@ int ds_open_dxva2(const wchar_t *filepath, HWND hwnd_display, int enable_dxva2)
     /* Add source filter for the file */
     hr = IGraphBuilder_AddSourceFilter(pGraph, filepath, L"Source", &pSource);
     if (FAILED(hr)) {
-        fprintf(stderr, "DirectShow: Failed to add source filter for '%ls': 0x%08lx\n", filepath, hr);
+        Log_Printf(L"DirectShow: Failed to add source filter for '%ls': 0x%08l", filepath, hr);
         ds_cleanup();
         return -1;
     }
@@ -209,18 +210,18 @@ int ds_open_dxva2(const wchar_t *filepath, HWND hwnd_display, int enable_dxva2)
             hr = IGraphBuilder_AddFilter(pGraph, pRenderer, L"VMR-9");
             if (SUCCEEDED(hr)) {
 #ifdef __MINGW32__
-                fprintf(stdout, "DirectShow: Using VMR-9 renderer (DXVA2 capable, MinGW build)\n");
+                Log_Printf(L"DirectShow: Using VMR-9 renderer (DXVA2 capable, MinGW build");
 #else
-                fprintf(stdout, "DirectShow: Using VMR-9 renderer (DXVA2 capable)\n");
+                Log_Printf(L"DirectShow: Using VMR-9 renderer (DXVA2 capable");
 #endif
                 g_dxva2 = 1;
             } else {
-                fprintf(stderr, "DirectShow: Failed to add VMR-9 filter: 0x%08lx\n", hr);
+                Log_Printf(L"DirectShow: Failed to add VMR-9 filter: 0x%08l", hr);
                 IBaseFilter_Release(pRenderer);
                 pRenderer = NULL;
             }
         } else {
-            fprintf(stderr, "DirectShow: Failed to create VMR-9: 0x%08lx\n", hr);
+            Log_Printf(L"DirectShow: Failed to create VMR-9: 0x%08l", hr);
         }
 
         /* If VMR-9 failed, try EVR */
@@ -231,18 +232,18 @@ int ds_open_dxva2(const wchar_t *filepath, HWND hwnd_display, int enable_dxva2)
                 hr = IGraphBuilder_AddFilter(pGraph, pRenderer, L"EVR");
                 if (SUCCEEDED(hr)) {
 #ifdef __MINGW32__
-                    fprintf(stdout, "DirectShow: Using EVR renderer (DXVA2 capable, MinGW build)\n");
+                    Log_Printf(L"DirectShow: Using EVR renderer (DXVA2 capable, MinGW build");
 #else
-                    fprintf(stdout, "DirectShow: Using EVR renderer (DXVA2 capable)\n");
+                    Log_Printf(L"DirectShow: Using EVR renderer (DXVA2 capable");
 #endif
                     g_dxva2 = 1;
                 } else {
-                    fprintf(stderr, "DirectShow: Failed to add EVR filter: 0x%08lx\n", hr);
+                    Log_Printf(L"DirectShow: Failed to add EVR filter: 0x%08l", hr);
                     IBaseFilter_Release(pRenderer);
                     pRenderer = NULL;
                 }
             } else {
-                fprintf(stderr, "DirectShow: Failed to create EVR: 0x%08lx\n", hr);
+                Log_Printf(L"DirectShow: Failed to create EVR: 0x%08l", hr);
             }
         }
     }
@@ -250,7 +251,7 @@ int ds_open_dxva2(const wchar_t *filepath, HWND hwnd_display, int enable_dxva2)
     /* Render all output pins (auto-connects decoder + renderer) */
     hr = IGraphBuilder_RenderFile(pGraph, filepath, NULL);
     if (FAILED(hr)) {
-        fprintf(stderr, "DirectShow: RenderFile failed: 0x%08lx\n", hr);
+        Log_Printf(L"DirectShow: RenderFile failed: 0x%08l", hr);
         if (pSource) IBaseFilter_Release(pSource);
         if (pRenderer) IBaseFilter_Release(pRenderer);
         ds_cleanup();
@@ -279,7 +280,7 @@ int ds_open_dxva2(const wchar_t *filepath, HWND hwnd_display, int enable_dxva2)
             if (vw > 0 && vh > 0) {
                 g_video_w = vw;
                 g_video_h = vh;
-                fprintf(stdout, "DirectShow: Native video size %ldx%ld\n", vw, vh);
+                Log_Printf(L"DirectShow: Native video size %ldx%l", vw, vh);
             }
         }
 
@@ -302,7 +303,7 @@ int ds_open_dxva2(const wchar_t *filepath, HWND hwnd_display, int enable_dxva2)
 
                 /* Set video position */
                 IVideoWindow_SetWindowPosition(pVideo, draw_x, draw_y, draw_w, draw_h);
-                fprintf(stdout, "DirectShow: Video position set to %dx%d at (%d,%d)\n", draw_w, draw_h, draw_x, draw_y);
+                Log_Printf(L"DirectShow: Video position set to %dx%d at (%d,%d", draw_w, draw_h, draw_x, draw_y);
             } else {
                 /* No video size info, fill the window */
                 IVideoWindow_SetWindowPosition(pVideo, 0, 0, display_w, display_h);
@@ -321,7 +322,7 @@ int ds_play(void)
     if (!pControl) return -1;
     HRESULT hr = IMediaControl_Run(pControl);
     if (SUCCEEDED(hr)) { g_playing = 1; return 0; }
-    fprintf(stderr, "DirectShow: Run failed: 0x%08lx\n", hr);
+    Log_Printf(L"DirectShow: Run failed: 0x%08l", hr);
     return -1;
 }
 

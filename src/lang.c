@@ -23,6 +23,8 @@ static const LangStrings g_chinese = {
     L"关于...",
     L"确定",
     L"取消",
+    L"清空日志",
+    L"导出日志",
     
     /* Status messages */
     L"请先打开视频文件",
@@ -89,6 +91,8 @@ static const LangStrings g_english = {
     L"About...",
     L"OK",
     L"Cancel",
+    L"Clear Log",
+    L"Export Log",
     
     /* Status messages */
     L"Please open a video file first",

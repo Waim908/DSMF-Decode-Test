@@ -15,6 +15,7 @@
 #include "resource.h"
 #include "app_config.h"
 #include "lang.h"
+#include "log.h"
 #include "directshow_decoder.h"
 #include "mf_decoder.h"
 #include "dxva2_helper.h"
@@ -62,7 +63,10 @@ static HWND g_hwndBtnStop    = NULL;
 static HWND g_hwndBtnOpen    = NULL;
 static HWND g_hwndBtnAbout   = NULL;
 static HWND g_hwndBtnLang    = NULL;
+static HWND g_hwndBtnClearLog = NULL;
+static HWND g_hwndBtnExportLog = NULL;
 static HWND g_hwndDisplay    = NULL;
+HWND g_hwndLog               = NULL;
 static HWND g_hwndStatus     = NULL;
 static HFONT g_hFont         = NULL;
 
@@ -218,6 +222,10 @@ static void CreateControls(HWND hwnd)
     g_hwndBtnDS      = MakeButton(hwnd, lang->btnDirectShow,  IDC_BTN_DIRECTSHOW,  x, ROW1_Y, bw);
     x += bw + BTN_GAP;
     g_hwndBtnDSDxva2 = MakeButton(hwnd, lang->btnDsDxva2,    IDC_BTN_DS_DXVA2,    x, ROW1_Y, bw);
+    x += bw + BTN_GAP;
+    g_hwndBtnClearLog = MakeButton(hwnd, lang->btnClearLog,  IDC_BTN_CLEAR_LOG,   x, ROW1_Y, bw);
+    x += bw + BTN_GAP;
+    g_hwndBtnExportLog = MakeButton(hwnd, lang->btnExportLog, IDC_BTN_EXPORT_LOG,  x, ROW1_Y, bw);
 
     /* Row 2: Media Foundation methods */
     x = BTN_PAD;
@@ -231,13 +239,22 @@ static void CreateControls(HWND hwnd)
 
     /* Row 3: control */
     x = BTN_PAD;
-    g_hwndBtnStop    = MakeButton(hwnd, lang->btnStop,       IDC_BTN_STOP,        x, ROW3_Y, 100);
-    x += 100 + BTN_GAP;
-    g_hwndBtnOpen    = MakeButton(hwnd, lang->btnOpenFile,   IDC_BTN_OPEN_FILE,   x, ROW3_Y, 120);
-    x += 120 + BTN_GAP;
-    g_hwndBtnAbout   = MakeButton(hwnd, lang->btnAbout,      IDC_BTN_ABOUT,       x, ROW3_Y, 80);
-    x += 80 + BTN_GAP;
-    g_hwndBtnLang    = MakeButton(hwnd, lang->btnLangSettings, IDC_BTN_LANG,   x, ROW3_Y, 120);
+    g_hwndBtnStop    = MakeButton(hwnd, lang->btnStop,       IDC_BTN_STOP,        x, ROW3_Y, bw);
+    x += bw + BTN_GAP;
+    g_hwndBtnOpen    = MakeButton(hwnd, lang->btnOpenFile,   IDC_BTN_OPEN_FILE,   x, ROW3_Y, bw);
+    x += bw + BTN_GAP;
+    g_hwndBtnAbout   = MakeButton(hwnd, lang->btnAbout,      IDC_BTN_ABOUT,       x, ROW3_Y, bw);
+    x += bw + BTN_GAP;
+    g_hwndBtnLang    = MakeButton(hwnd, lang->btnLangSettings, IDC_BTN_LANG,   x, ROW3_Y, bw);
+
+    /* Log display area (right of buttons) */
+    g_hwndLog = CreateWindowExW(
+        WS_EX_CLIENTEDGE, L"EDIT", L"",
+        WS_CHILD | WS_VISIBLE | WS_VSCROLL | WS_HSCROLL |
+        ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | ES_AUTOHSCROLL,
+        0, 0, 0, 0,
+        hwnd, (HMENU)(UINT_PTR)IDC_LOG_DISPLAY, NULL, NULL);
+    if (g_hwndLog && g_hFont) SendMessageW(g_hwndLog, WM_SETFONT, (WPARAM)g_hFont, TRUE);
 
     /* Video display area */
     g_hwndDisplay = CreateWindowExW(
@@ -266,6 +283,15 @@ static void ResizeControls(HWND hwnd)
     GetWindowRect(g_hwndStatus, &rcStatus);
     int status_h = rcStatus.bottom - rcStatus.top;
 
+    /* Calculate button area width (Row2 is widest: 4 buttons * 140 + 3 gaps + padding) */
+    int btn_area_w = 4 * 140 + 3 * BTN_GAP + BTN_PAD;
+
+    /* Log display area (right of buttons, same height as toolbar) */
+    int log_x = btn_area_w + BTN_GAP;
+    int log_w = rc.right - log_x - BTN_PAD;
+    if (log_w < 100) log_w = 100;
+    MoveWindow(g_hwndLog, log_x, BTN_PAD, log_w, TOOLBAR_H - BTN_PAD * 2, TRUE);
+
     /* Video display fills the rest */
     int display_y = TOOLBAR_H;
     int display_h = rc.bottom - display_y - status_h;
@@ -288,9 +314,46 @@ static void UpdateStatus(const wchar_t *fmt, ...)
     va_start(args, fmt);
     vswprintf(msg, 512, fmt, args);
     va_end(args);
-    
+
     if (g_hwndStatus)
         SendMessageW(g_hwndStatus, SB_SETTEXTW, 0, (LPARAM)msg);
+}
+
+/* Append text to log display with auto-scroll */
+void Log_Append(const wchar_t *text)
+{
+    if (!g_hwndLog) return;
+
+    /* Get current text length */
+    int len = GetWindowTextLengthW(g_hwndLog);
+
+    /* Limit text length to prevent excessive memory usage (keep last 64KB) */
+    if (len > 65536) {
+        /* Select and delete first half */
+        SendMessageW(g_hwndLog, EM_SETSEL, 0, len / 2);
+        SendMessageW(g_hwndLog, EM_REPLACESEL, FALSE, (LPARAM)L"");
+        len = GetWindowTextLengthW(g_hwndLog);
+    }
+
+    /* Move caret to end */
+    SendMessageW(g_hwndLog, EM_SETSEL, len, len);
+
+    /* Append new text */
+    SendMessageW(g_hwndLog, EM_REPLACESEL, FALSE, (LPARAM)text);
+}
+
+/* Log printf-style formatted text */
+void Log_Printf(const wchar_t *fmt, ...)
+{
+    wchar_t msg[1024];
+    va_list args;
+    va_start(args, fmt);
+    vswprintf(msg, 1024, fmt, args);
+    va_end(args);
+
+    /* Append with newline */
+    wcscat_s(msg, 1024, L"\r\n");
+    Log_Append(msg);
 }
 
 static void StopAll(void)
@@ -684,6 +747,51 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         case IDC_BTN_LANG:
             ShowLangSettingsDialog(hwnd);
             break;
+        case IDC_BTN_CLEAR_LOG:
+            SetWindowTextW(g_hwndLog, L"");
+            break;
+        case IDC_BTN_EXPORT_LOG: {
+            OPENFILENAMEW ofn;
+            wchar_t savePath[MAX_PATH] = L"decoder_log.txt";
+            ZeroMemory(&ofn, sizeof(ofn));
+            ofn.lStructSize  = sizeof(ofn);
+            ofn.hwndOwner    = hwnd;
+            ofn.lpstrFilter  = L"Text Files (*.txt)\0*.txt\0All Files (*.*)\0*.*\0";
+            ofn.lpstrFile    = savePath;
+            ofn.nMaxFile     = MAX_PATH;
+            ofn.lpstrTitle   = L"导出日志";
+            ofn.Flags        = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST;
+            ofn.lpstrDefExt  = L"txt";
+            if (GetSaveFileNameW(&ofn)) {
+                HANDLE hFile = CreateFileW(savePath, GENERIC_WRITE, 0, NULL,
+                    CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+                if (hFile != INVALID_HANDLE_VALUE) {
+                    int len = GetWindowTextLengthW(g_hwndLog);
+                    if (len > 0) {
+                        wchar_t *buf = (wchar_t *)malloc((len + 1) * sizeof(wchar_t));
+                        if (buf) {
+                            GetWindowTextW(g_hwndLog, buf, len + 1);
+                            /* Write UTF-8 BOM */
+                            DWORD written;
+                            BYTE bom[] = {0xEF, 0xBB, 0xBF};
+                            WriteFile(hFile, bom, 3, &written, NULL);
+                            /* Convert to UTF-8 and write */
+                            int utf8Len = WideCharToMultiByte(CP_UTF8, 0, buf, len, NULL, 0, NULL, NULL);
+                            char *utf8Buf = (char *)malloc(utf8Len + 1);
+                            if (utf8Buf) {
+                                WideCharToMultiByte(CP_UTF8, 0, buf, len, utf8Buf, utf8Len, NULL, NULL);
+                                WriteFile(hFile, utf8Buf, utf8Len, &written, NULL);
+                                free(utf8Buf);
+                            }
+                            free(buf);
+                        }
+                    }
+                    CloseHandle(hFile);
+                    UpdateStatus(L"日志已导出: %ls", savePath);
+                }
+            }
+            break;
+        }
         }
         return 0;
 

@@ -20,7 +20,9 @@ typedef struct {
     const wchar_t *btnAbout;
     const wchar_t *btnOk;
     const wchar_t *btnCancel;
-    
+    const wchar_t *btnClearLog;
+    const wchar_t *btnExportLog;
+
     /* Status messages */
     const wchar_t *statusReady;
     const wchar_t *statusStopped;

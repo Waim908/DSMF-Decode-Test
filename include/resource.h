@@ -31,6 +31,11 @@
 /* Video display area */
 #define IDC_VIDEO_DISPLAY       1100
 
+/* Log display area */
+#define IDC_LOG_DISPLAY         1101
+#define IDC_BTN_CLEAR_LOG       1102
+#define IDC_BTN_EXPORT_LOG      1103
+
 /* Status bar */
 #define IDC_STATUS_BAR          1200
 

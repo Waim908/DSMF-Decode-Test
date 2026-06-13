@@ -3,6 +3,7 @@
  * Manages Direct3D9 device, DXVA2 decoder, and video processor.
  */
 #include "dxva2_helper.h"
+#include "log.h"
 
 #include <d3d9.h>
 #include <dxva2api.h>
@@ -61,13 +62,13 @@ IDirect3DDevice9 *dxva2_init(HWND hwnd, int width, int height)
 
     pD3D = Direct3DCreate9(D3D_SDK_VERSION);
     if (!pD3D) {
-        fprintf(stderr, "DXVA2: Direct3DCreate9 failed\n");
+        Log_Printf(L"DXVA2: Direct3DCreate9 faile");
         return NULL;
     }
 
     /* Get current display mode */
     if (IDirect3D9_GetAdapterDisplayMode(pD3D, D3DADAPTER_DEFAULT, &dmode) != D3D_OK) {
-        fprintf(stderr, "DXVA2: GetAdapterDisplayMode failed\n");
+        Log_Printf(L"DXVA2: GetAdapterDisplayMode faile");
         dxva2_cleanup();
         return NULL;
     }
@@ -97,7 +98,7 @@ IDirect3DDevice9 *dxva2_init(HWND hwnd, int width, int height)
     }
 
     if (FAILED(hr)) {
-        fprintf(stderr, "DXVA2: CreateDevice failed: 0x%08lx\n", hr);
+        Log_Printf(L"DXVA2: CreateDevice failed: 0x%08l", hr);
         dxva2_cleanup();
         return NULL;
     }
@@ -106,7 +107,7 @@ IDirect3DDevice9 *dxva2_init(HWND hwnd, int width, int height)
     hr = IDirect3DDevice9_CreateRenderTarget(pDevice, width, height,
         dmode.Format, D3DMULTISAMPLE_NONE, 0, FALSE, &pRT, NULL);
     if (FAILED(hr)) {
-        fprintf(stderr, "DXVA2: CreateRenderTarget failed: 0x%08lx\n", hr);
+        Log_Printf(L"DXVA2: CreateRenderTarget failed: 0x%08l", hr);
         /* Non-fatal: we can still use the back buffer */
         pRT = NULL;
     }
@@ -115,7 +116,7 @@ IDirect3DDevice9 *dxva2_init(HWND hwnd, int width, int height)
     g_width  = width;
     g_height = height;
 
-    fprintf(stdout, "DXVA2: D3D9 device created successfully (%dx%d)\n", width, height);
+    Log_Printf(L"DXVA2: D3D9 device created successfully (%dx%d", width, height);
     return pDevice;
 }
 
@@ -140,7 +141,7 @@ int dxva2_check_support(void)
     hr = DXVA2CreateVideoService(pDevice, &IID_IDXVPS,
                                  (void **)&processor);
     if (FAILED(hr)) {
-        fprintf(stderr, "DXVA2: DXVA2CreateVideoService failed: 0x%08lx\n", hr);
+        Log_Printf(L"DXVA2: DXVA2CreateVideoService failed: 0x%08l", hr);
         return 0;
     }
 
@@ -247,14 +248,14 @@ int dxva2_decoder_init(const DXVA2DecoderConfig *config)
     /* Create decoder service */
     hr = DXVA2CreateVideoService(pDevice, &IID_IDDS, (void **)&pDecoderService);
     if (FAILED(hr)) {
-        fprintf(stderr, "DXVA2: Failed to create decoder service: 0x%08lx\n", hr);
+        Log_Printf(L"DXVA2: Failed to create decoder service: 0x%08l", hr);
         return -1;
     }
 
     /* Get decoder device GUIDs */
     hr = IDirectXVideoDecoderService_GetDecoderDeviceGuids(pDecoderService, &count, &guids);
     if (FAILED(hr) || count == 0) {
-        fprintf(stderr, "DXVA2: No decoder GUIDs available\n");
+        Log_Printf(L"DXVA2: No decoder GUIDs availabl");
         dxva2_decoder_cleanup();
         return -1;
     }
@@ -269,11 +270,11 @@ int dxva2_decoder_init(const DXVA2DecoderConfig *config)
 
         if (IsEqualGUID(&guids[i], &h264_guid)) {
             g_decoderGuid = guids[i];
-            fprintf(stdout, "DXVA2: Using H.264 decoder\n");
+            Log_Printf(L"DXVA2: Using H.264 decode");
             break;
         } else if (IsEqualGUID(&guids[i], &hevc_guid)) {
             g_decoderGuid = guids[i];
-            fprintf(stdout, "DXVA2: Using HEVC decoder\n");
+            Log_Printf(L"DXVA2: Using HEVC decode");
             break;
         }
     }
@@ -281,13 +282,13 @@ int dxva2_decoder_init(const DXVA2DecoderConfig *config)
     /* If no specific decoder found, use first available */
     if (IsEqualGUID(&g_decoderGuid, &GUID_NULL) && count > 0) {
         g_decoderGuid = guids[0];
-        fprintf(stdout, "DXVA2: Using default decoder\n");
+        Log_Printf(L"DXVA2: Using default decode");
     }
 
     CoTaskMemFree(guids);
 
     if (IsEqualGUID(&g_decoderGuid, &GUID_NULL)) {
-        fprintf(stderr, "DXVA2: No suitable decoder found\n");
+        Log_Printf(L"DXVA2: No suitable decoder foun");
         dxva2_decoder_cleanup();
         return -1;
     }
@@ -295,7 +296,7 @@ int dxva2_decoder_init(const DXVA2DecoderConfig *config)
     /* Check if NV12 format is supported (most common for H.264/HEVC) */
     hr = IDirectXVideoDecoderService_GetDecoderRenderTargets(pDecoderService, &g_decoderGuid, &num_formats, &formats);
     if (FAILED(hr) || num_formats == 0) {
-        fprintf(stderr, "DXVA2: No render targets available for decoder\n");
+        Log_Printf(L"DXVA2: No render targets available for decode");
         dxva2_decoder_cleanup();
         return -1;
     }
@@ -311,7 +312,7 @@ int dxva2_decoder_init(const DXVA2DecoderConfig *config)
     CoTaskMemFree(formats);
 
     if (!nv12_supported) {
-        fprintf(stderr, "DXVA2: NV12 format not supported by decoder\n");
+        Log_Printf(L"DXVA2: NV12 format not supported by decode");
         dxva2_decoder_cleanup();
         return -1;
     }
@@ -329,7 +330,7 @@ int dxva2_decoder_init(const DXVA2DecoderConfig *config)
     /* Get decoder configurations */
     hr = IDirectXVideoDecoderService_GetDecoderConfigurations(pDecoderService, &g_decoderGuid, &desc, NULL, &num_configs, &configs);
     if (FAILED(hr) || num_configs == 0) {
-        fprintf(stderr, "DXVA2: No decoder configurations available\n");
+        Log_Printf(L"DXVA2: No decoder configurations availabl");
         dxva2_decoder_cleanup();
         return -1;
     }
@@ -346,7 +347,7 @@ int dxva2_decoder_init(const DXVA2DecoderConfig *config)
     ppDecodeSurfaces = (IDirect3DSurface9 **)malloc(g_numSurfaces * sizeof(IDirect3DSurface9 *));
     pSurfaceIndices = (UINT *)malloc(g_numSurfaces * sizeof(UINT));
     if (!ppDecodeSurfaces || !pSurfaceIndices) {
-        fprintf(stderr, "DXVA2: Memory allocation failed\n");
+        Log_Printf(L"DXVA2: Memory allocation faile");
         dxva2_decoder_cleanup();
         return -1;
     }
@@ -360,7 +361,7 @@ int dxva2_decoder_init(const DXVA2DecoderConfig *config)
         D3DFMT_NV12, D3DPOOL_DEFAULT, 0, DXVA2_VideoDecoderRenderTarget,
         ppDecodeSurfaces, (void **)pSurfaceIndices);
     if (FAILED(hr)) {
-        fprintf(stderr, "DXVA2: Failed to create decode surfaces: 0x%08lx\n", hr);
+        Log_Printf(L"DXVA2: Failed to create decode surfaces: 0x%08l", hr);
         dxva2_decoder_cleanup();
         return -1;
     }
@@ -368,13 +369,13 @@ int dxva2_decoder_init(const DXVA2DecoderConfig *config)
     /* Create decoder */
     hr = IDirectXVideoDecoderService_CreateVideoDecoder(pDecoderService, &g_decoderGuid, &desc, &g_decoderConfig, ppDecodeSurfaces, g_numSurfaces, &pDecoder);
     if (FAILED(hr)) {
-        fprintf(stderr, "DXVA2: Failed to create decoder: 0x%08lx\n", hr);
+        Log_Printf(L"DXVA2: Failed to create decoder: 0x%08l", hr);
         dxva2_decoder_cleanup();
         return -1;
     }
 
     g_nextSurface = 0;
-    fprintf(stdout, "DXVA2: Decoder initialized (%dx%d, %d surfaces)\n", config->width, config->height, g_numSurfaces);
+    Log_Printf(L"DXVA2: Decoder initialized (%dx%d, %d surfaces", config->width, config->height, g_numSurfaces);
     return 0;
 }
 
@@ -416,28 +417,28 @@ int dxva2_decoder_decode(const BYTE *buffer, DWORD size, LONGLONG pts)
     surface = ppDecodeSurfaces[surface_index];
 
     if (!surface) {
-        fprintf(stderr, "DXVA2: No decode surface available\n");
+        Log_Printf(L"DXVA2: No decode surface availabl");
         return -1;
     }
 
     /* Begin decode frame */
     hr = IDirectXVideoDecoder_BeginFrame(pDecoder, surface, NULL);
     if (FAILED(hr)) {
-        fprintf(stderr, "DXVA2: BeginFrame failed: 0x%08lx\n", hr);
+        Log_Printf(L"DXVA2: BeginFrame failed: 0x%08l", hr);
         return -1;
     }
 
     /* Get bitstream buffer */
     hr = IDirectXVideoDecoder_GetBuffer(pDecoder, DXVA2_BitStreamDateBufferType, &pbBuffer, &cbBuffer);
     if (FAILED(hr)) {
-        fprintf(stderr, "DXVA2: GetBuffer failed: 0x%08lx\n", hr);
+        Log_Printf(L"DXVA2: GetBuffer failed: 0x%08l", hr);
         IDirectXVideoDecoder_EndFrame(pDecoder, NULL);
         return -1;
     }
 
     /* Copy bitstream data to buffer */
     if (cbBuffer < size) {
-        fprintf(stderr, "DXVA2: Buffer too small (%u < %lu)\n", cbBuffer, size);
+        Log_Printf(L"DXVA2: Buffer too small (%u < %lu", cbBuffer, size);
         IDirectXVideoDecoder_ReleaseBuffer(pDecoder, DXVA2_BitStreamDateBufferType);
         IDirectXVideoDecoder_EndFrame(pDecoder, NULL);
         return -1;
@@ -447,7 +448,7 @@ int dxva2_decoder_decode(const BYTE *buffer, DWORD size, LONGLONG pts)
     /* Release buffer */
     hr = IDirectXVideoDecoder_ReleaseBuffer(pDecoder, DXVA2_BitStreamDateBufferType);
     if (FAILED(hr)) {
-        fprintf(stderr, "DXVA2: ReleaseBuffer failed: 0x%08lx\n", hr);
+        Log_Printf(L"DXVA2: ReleaseBuffer failed: 0x%08l", hr);
         IDirectXVideoDecoder_EndFrame(pDecoder, NULL);
         return -1;
     }
@@ -455,7 +456,7 @@ int dxva2_decoder_decode(const BYTE *buffer, DWORD size, LONGLONG pts)
     /* End decode frame */
     hr = IDirectXVideoDecoder_EndFrame(pDecoder, NULL);
     if (FAILED(hr)) {
-        fprintf(stderr, "DXVA2: EndFrame failed: 0x%08lx\n", hr);
+        Log_Printf(L"DXVA2: EndFrame failed: 0x%08l", hr);
         return -1;
     }
 
@@ -525,14 +526,14 @@ int dxva2_processor_init(DXVA2_VideoFormat input_format, DXVA2_VideoFormat outpu
     /* Create processor service */
     hr = DXVA2CreateVideoService(pDevice, &IID_IDXVPS, (void **)&pProcessorService);
     if (FAILED(hr)) {
-        fprintf(stderr, "DXVA2: Failed to create processor service: 0x%08lx\n", hr);
+        Log_Printf(L"DXVA2: Failed to create processor service: 0x%08l", hr);
         return -1;
     }
 
     /* Get video processor GUIDs */
     hr = IDirectXVideoProcessorService_GetVideoProcessorDeviceGuids(pProcessorService, NULL, &num_guids, &proc_guids);
     if (FAILED(hr) || num_guids == 0) {
-        fprintf(stderr, "DXVA2: No video processor GUIDs available\n");
+        Log_Printf(L"DXVA2: No video processor GUIDs availabl");
         dxva2_processor_cleanup();
         return -1;
     }
@@ -556,12 +557,12 @@ int dxva2_processor_init(DXVA2_VideoFormat input_format, DXVA2_VideoFormat outpu
     /* CreateVideoProcessor(This, VideoProcDeviceGuid, pVideoDesc, RenderTargetFormat, MaxNumSubStreams, ppVidProcess) */
     hr = IDirectXVideoProcessorService_CreateVideoProcessor(pProcessorService, &proc_guid, &desc, D3DFMT_X8R8G8B8, 0, &pProcessor);
     if (FAILED(hr)) {
-        fprintf(stderr, "DXVA2: Failed to create video processor: 0x%08lx\n", hr);
+        Log_Printf(L"DXVA2: Failed to create video processor: 0x%08l", hr);
         dxva2_processor_cleanup();
         return -1;
     }
 
-    fprintf(stdout, "DXVA2: Video processor initialized\n");
+    Log_Printf(L"DXVA2: Video processor initialize");
     return 0;
 }
 
@@ -620,7 +621,7 @@ int dxva2_processor_render(IDirect3DSurface9 *src_surface,
     /* Process and render */
     hr = IDirectXVideoProcessor_VideoProcessBlt(pProcessor, rt, &params, &sample, 1, NULL);
     if (FAILED(hr)) {
-        fprintf(stderr, "DXVA2: VideoProcessBlt failed: 0x%08lx\n", hr);
+        Log_Printf(L"DXVA2: VideoProcessBlt failed: 0x%08l", hr);
         IDirect3DSurface9_Release(rt);
         return -1;
     }
@@ -656,7 +657,7 @@ IDirect3DSurface9 *dxva2_create_surface(UINT width, UINT height, D3DFORMAT forma
 
     hr = IDirect3DDevice9_CreateOffscreenPlainSurface(pDevice, width, height, format, D3DPOOL_DEFAULT, &surface, NULL);
     if (FAILED(hr)) {
-        fprintf(stderr, "DXVA2: CreateOffscreenPlainSurface failed: 0x%08lx\n", hr);
+        Log_Printf(L"DXVA2: CreateOffscreenPlainSurface failed: 0x%08l", hr);
         return NULL;
     }
 
@@ -682,7 +683,7 @@ int dxva2_upload_surface(IDirect3DSurface9 *surface, const BYTE *data, int strid
     /* Lock surface */
     hr = IDirect3DSurface9_LockRect(surface, &locked, NULL, D3DLOCK_DISCARD);
     if (FAILED(hr)) {
-        fprintf(stderr, "DXVA2: LockRect failed: 0x%08lx\n", hr);
+        Log_Printf(L"DXVA2: LockRect failed: 0x%08l", hr);
         return -1;
     }
 
@@ -727,7 +728,7 @@ int dxva2_upload_surface(IDirect3DSurface9 *surface, const BYTE *data, int strid
             src += stride;
         }
     } else {
-        fprintf(stderr, "DXVA2: Unsupported surface format\n");
+        Log_Printf(L"DXVA2: Unsupported surface forma");
         IDirect3DSurface9_UnlockRect(surface);
         return -1;
     }
