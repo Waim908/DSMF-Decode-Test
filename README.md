@@ -61,6 +61,8 @@ K-lite正常生效之后，你可以在系统任务栏看到以下图标：
 
 ![wine-taskbar](wine-taskbar.png)
 
+![win10-taskbar](win10-taskbar.png)
+
 ## CLSID
 
 对于 DirectShow，用于注册第三方解码器的组件 ID 是固定的：
