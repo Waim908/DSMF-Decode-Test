@@ -151,13 +151,18 @@ int ds_open(const wchar_t *filepath, HWND hwnd_display)
             if (vw > 0 && vh > 0) {
                 g_video_w = vw;
                 g_video_h = vh;
-                Log_Printf(L"DirectShow: Native video size %ldx%l", vw, vh);
+                Log_Printf(L"DirectShow: Native video size %ldx%ld", vw, vh);
+            } else {
+                Log_Printf(L"DirectShow: Failed to get video size from IBasicVideo (%ldx%ld)", vw, vh);
             }
+        } else {
+            Log_Printf(L"DirectShow: IBasicVideo not available");
         }
 
         /* Fit video to display area with aspect ratio */
         ds_update_aspect();
         IVideoWindow_put_Visible(pVideo, OATRUE);
+        Log_Printf(L"DirectShow: Video window set to visible");
     }
 
     /* Show registered video decoders in log */
@@ -289,7 +294,9 @@ int ds_open_dxva2(const wchar_t *filepath, HWND hwnd_display, int enable_dxva2)
             if (vw > 0 && vh > 0) {
                 g_video_w = vw;
                 g_video_h = vh;
-                Log_Printf(L"DirectShow: Native video size %ldx%l", vw, vh);
+                Log_Printf(L"DirectShow: Native video size %ldx%ld", vw, vh);
+            } else {
+                Log_Printf(L"DirectShow: Failed to get video size (%ldx%ld)", vw, vh);
             }
         }
 
@@ -320,6 +327,7 @@ int ds_open_dxva2(const wchar_t *filepath, HWND hwnd_display, int enable_dxva2)
         }
 
         IVideoWindow_put_Visible(pVideo, OATRUE);
+        Log_Printf(L"DirectShow: Video window set to visible (DXVA2 mode)");
     }
 
     /* Show registered video decoders in log */

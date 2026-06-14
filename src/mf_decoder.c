@@ -720,15 +720,15 @@ static void mf_render_frame(BYTE *data, int stride, int width, int height, HWND 
     BITMAPINFO bi;
     void *bits = NULL;
 
-    if (!hwnd) return;
+    if (!hwnd) { Log_Printf(L"MF Render: hwnd is NULL"); return; }
 
     hdc = GetDC(hwnd);
-    if (!hdc) return;
+    if (!hdc) { Log_Printf(L"MF Render: GetDC failed"); return; }
 
     GetClientRect(hwnd, &rc);
     display_w = rc.right;
     display_h = rc.bottom;
-    if (display_w <= 0 || display_h <= 0) { ReleaseDC(hwnd, hdc); return; }
+    if (display_w <= 0 || display_h <= 0) { ReleaseDC(hwnd, hdc); Log_Printf(L"MF Render: display size %dx%d", display_w, display_h); return; }
 
     /* Aspect ratio */
     scale_x = (float)display_w / (float)width;
@@ -814,7 +814,14 @@ int mf_render_next_frame(void)
     if (!g_reader || !g_active) return -1;
 
     /* For audio-only files (no video stream), just return 0 to keep playing */
-    if (g_width == 0 || g_height == 0) return 0;
+    if (g_width == 0 || g_height == 0) {
+        static int logged_no_video = 0;
+        if (!logged_no_video) {
+            Log_Printf(L"MF: No video (width=%d height=%d), audio-only mode", g_width, g_height);
+            logged_no_video = 1;
+        }
+        return 0;
+    }
 
     /* Read video sample with drop-late-frame loop */
     for (;;) {
