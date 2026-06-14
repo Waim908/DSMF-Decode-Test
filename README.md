@@ -14,6 +14,10 @@
 
 ![DSMF](dsmf.png)
 
+# 为什么我在wine进行DirectShow+dxva2视频只有不到四分之一的画面？
+
+![setting](set.png)
+
 ## 为什么我在 Wine 安装的第三方解码器（如 K-Lite）完全没有任何作用？通过设置 `winegstreamer.dll` 为禁用也不行？
 
 首先，必须否定在 Wine 或模拟器社区广为流传的方法（最初在 mobox 中见过）：

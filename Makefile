@@ -73,7 +73,7 @@ ifeq ($(TOOLCHAIN),msvc)
     LDFLAGS=/SUBSYSTEM:WINDOWS /ENTRY:wWinMainCRTStartup \
         strmiids.lib mfplat.lib mf.lib mfreadwrite.lib mfuuid.lib evr.lib \
         d3d9.lib dxva2.lib d3d11.lib d3d12.lib dxgi.lib dxguid.lib \
-        comctl32.lib gdi32.lib user32.lib ole32.lib uuid.lib comdlg32.lib shlwapi.lib shell32.lib winmm.lib
+        comctl32.lib gdi32.lib user32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib shlwapi.lib shell32.lib winmm.lib
     OBJ_EXT = .obj
     RES_EXT = .res
     RES_FLAGS = /nologo /I./include /I./res /fo
