@@ -377,6 +377,7 @@ void Log_Printf(const wchar_t *fmt, ...)
 static void StopAll(void)
 {
     const LangStrings *lang = Lang_GetStrings();
+    MSG msg;
     
     if (g_renderTimerActive) {
         KillTimer(g_hwndMain, TIMER_RENDER);
@@ -388,6 +389,14 @@ static void StopAll(void)
     d3d11_video_cleanup();
     d3d12_video_cleanup();
     g_currentMode = 0;
+
+    /* Give the system time to fully release COM objects and resources.
+     * This prevents issues when rapidly switching between decoders. */
+    Sleep(20);
+    while (PeekMessageW(&msg, NULL, 0, 0, PM_REMOVE)) {
+        TranslateMessage(&msg);
+        DispatchMessageW(&msg);
+    }
 
     /* Clear display area to prevent residual frames. */
     if (g_hwndDisplay) {
