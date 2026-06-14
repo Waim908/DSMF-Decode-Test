@@ -1,8 +1,8 @@
 /obj
 *.exe
-/medfound  
-/media-foundation
-/DirectShow
+/medfound/
+/media-foundation/
+/DirectShow/
 .cflags
 *.ini
 *.txt
