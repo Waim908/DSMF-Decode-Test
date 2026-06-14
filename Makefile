@@ -83,7 +83,7 @@ else
     LDFLAGS=-s -mwindows -municode \
         -lstrmiids -lmfplat -lmf -lmfreadwrite -lmfuuid -levr \
         -ld3d9 -ldxva2 -ld3d11 -ld3d12 -ldxgi -ldxguid \
-        -lcomctl32 -lgdi32 -luser32 -lole32 -luuid -lcomdlg32 -lshlwapi -lshell32 -lwinmm
+        -lcomctl32 -lgdi32 -luser32 -lole32 -loleaut32 -luuid -lcomdlg32 -lshlwapi -lshell32 -lwinmm
     OBJ_EXT = .o
     RES_EXT = .o
     RES_FLAGS = --codepage=65001 -I./include -I./res

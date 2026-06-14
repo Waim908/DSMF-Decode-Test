@@ -459,56 +459,62 @@ static void ds_clsid_to_string(REFCLSID clsid, wchar_t *buf, int buf_len)
     StringFromGUID2(clsid, buf, buf_len);
 }
 
-/* Helper: enumerate filters in a category from registry */
+/* Helper: enumerate filters in a category using ICreateDevEnum */
 static int ds_enum_category_filters(REFCLSID pCategoryClsid, const wchar_t *category_name)
 {
-    HKEY hKey;
-    wchar_t keyPath[256];
-    wchar_t clsidStr[64];
+    ICreateDevEnum *pDevEnum = NULL;
+    IEnumMoniker *pEnum = NULL;
+    IMoniker *pMoniker = NULL;
+    IPropertyBag *pPropBag = NULL;
+    HRESULT hr;
     int count = 0;
 
-    /* Build registry path: CLSID\{category-clsid}\Instance */
-    ds_clsid_to_string(pCategoryClsid, clsidStr, 64);
-    swprintf(keyPath, 256, L"CLSID\\%ls\\Instance", clsidStr);
-
-    if (RegOpenKeyExW(HKEY_CLASSES_ROOT, keyPath, 0, KEY_READ, &hKey) != ERROR_SUCCESS) {
-        Log_Printf(L"[DS Filters] Cannot open category: %ls", category_name);
+    hr = CoCreateInstance(&CLSID_SystemDeviceEnum, NULL, CLSCTX_INPROC_SERVER,
+                          &IID_ICreateDevEnum, (void **)&pDevEnum);
+    if (FAILED(hr)) {
+        Log_Printf(L"[DS Filters] Cannot create device enumerator: 0x%08lX", hr);
         return 0;
     }
 
-    Log_Printf(L"=== %ls ===", category_name);
+    hr = ICreateDevEnum_CreateClassEnumerator(pDevEnum, pCategoryClsid, &pEnum, 0);
+    if (hr == S_OK && pEnum) {
+        Log_Printf(L"=== %ls ===", category_name);
 
-    DWORD index = 0;
-    wchar_t subKeyName[256];
-    DWORD subKeyLen = 256;
+        while (IEnumMoniker_Next(pEnum, 1, &pMoniker, NULL) == S_OK) {
+            hr = IMoniker_BindToStorage(pMoniker, 0, 0, &IID_IPropertyBag, (void **)&pPropBag);
+            if (SUCCEEDED(hr)) {
+                VARIANT varName;
+                VARIANT varClsid;
+                VariantInit(&varName);
+                VariantInit(&varClsid);
 
-    while (RegEnumKeyExW(hKey, index, subKeyName, &subKeyLen, NULL, NULL, NULL, NULL) == ERROR_SUCCESS) {
-        HKEY hSubKey;
-        wchar_t subKeyPath[512];
-        swprintf(subKeyPath, 512, L"%ls\\%ls", keyPath, subKeyName);
+                wchar_t filterName[256] = L"(unknown)";
+                wchar_t filterClsid[64] = L"";
 
-        if (RegOpenKeyExW(HKEY_CLASSES_ROOT, subKeyPath, 0, KEY_READ, &hSubKey) == ERROR_SUCCESS) {
-            /* Read filter name */
-            wchar_t filterName[256] = L"(unknown)";
-            DWORD nameLen = sizeof(filterName);
-            RegQueryValueExW(hSubKey, L"FriendlyName", NULL, NULL, (LPBYTE)filterName, &nameLen);
+                if (SUCCEEDED(IPropertyBag_Read(pPropBag, L"FriendlyName", &varName, NULL))) {
+                    wcsncpy_s(filterName, 256, varName.bstrVal, _TRUNCATE);
+                    VariantClear(&varName);
+                }
+                if (SUCCEEDED(IPropertyBag_Read(pPropBag, L"CLSID", &varClsid, NULL))) {
+                    wcsncpy_s(filterClsid, 64, varClsid.bstrVal, _TRUNCATE);
+                    VariantClear(&varClsid);
+                }
 
-            /* Read CLSID string */
-            wchar_t filterClsid[64] = L"";
-            DWORD clsidLen = sizeof(filterClsid);
-            RegQueryValueExW(hSubKey, L"CLSID", NULL, NULL, (LPBYTE)filterClsid, &clsidLen);
+                Log_Printf(L"  [%ls] %ls", filterClsid, filterName);
+                count++;
 
-            Log_Printf(L"  [%ls] %ls", filterClsid, filterName);
-            count++;
-
-            RegCloseKey(hSubKey);
+                IPropertyBag_Release(pPropBag);
+                pPropBag = NULL;
+            }
+            IMoniker_Release(pMoniker);
+            pMoniker = NULL;
         }
-
-        subKeyLen = 256;
-        index++;
+        IEnumMoniker_Release(pEnum);
+    } else {
+        Log_Printf(L"[DS Filters] Category empty or not available: %ls", category_name);
     }
 
-    RegCloseKey(hKey);
+    ICreateDevEnum_Release(pDevEnum);
     return count;
 }
 
