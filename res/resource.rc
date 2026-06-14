@@ -24,15 +24,18 @@ BEGIN
     DEFPUSHBUTTON   L"OK", IDOK, 110, 112, 60, 16
 END
 
-/* Language settings dialog */
-IDD_LANG_SETTINGS DIALOGEX 0, 0, 260, 120
+/* Settings dialog */
+IDD_SETTINGS DIALOGEX 0, 0, 300, 180
 STYLE DS_SETFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION L"Language Settings"
+CAPTION L"Settings"
 FONT 11, L"Segoe UI"
 BEGIN
-    LTEXT           L"Select interface language:", IDC_LANG_LABEL, 16, 16, 228, 16
-    COMBOBOX        IDC_LANG_COMBO, 16, 36, 228, 60, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    LTEXT           L"", IDC_LANG_HINT, 16, 72, 228, 24
-    DEFPUSHBUTTON   L"OK", IDOK, 76, 96, 50, 16
-    PUSHBUTTON      L"Cancel", IDCANCEL, 134, 96, 50, 16
+    LTEXT           L"Select interface language:", IDC_LANG_LABEL, 16, 16, 268, 16
+    COMBOBOX        IDC_LANG_COMBO, 16, 36, 268, 60, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           L"", IDC_LANG_HINT, 16, 60, 268, 24
+    GROUPBOX        L"Compatibility", -1, 16, 90, 268, 44
+    CONTROL         L"Enable Wine DirectShow fix (use default renderer)", IDC_WINE_FIX_CHECK,
+                    L"Button", BS_AUTOCHECKBOX | WS_TABSTOP, 28, 108, 244, 16
+    DEFPUSHBUTTON   L"OK", IDOK, 94, 148, 50, 16
+    PUSHBUTTON      L"Cancel", IDCANCEL, 156, 148, 50, 16
 END

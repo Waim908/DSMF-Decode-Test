@@ -9,9 +9,10 @@
 #define INI_SECTION      L"Settings"
 #define KEY_LANGUAGE     L"Language"
 #define KEY_LAST_OPEN_DIR L"LastOpenDir"
+#define KEY_WINE_FIX     L"WineFix"
 
 /* INI file version */
-#define INI_VERSION      1
+#define INI_VERSION      2
 #define KEY_VERSION      L"Version"
 
 /* Language string values for INI */
@@ -48,6 +49,7 @@ void Config_GetIniPath(wchar_t *path, int path_len)
 static void Config_SetDefaults(AppConfig *config)
 {
     config->language = Config_DetectSystemLanguage();
+    config->wine_fix = 0;  /* Default: disabled */
     config->lastOpenDir[0] = L'\0';
 }
 
@@ -88,6 +90,9 @@ void Config_Init(AppConfig *config)
         config->language = Config_DetectSystemLanguage();
     }
     
+    /* Read wine fix setting */
+    config->wine_fix = (int)GetPrivateProfileIntW(INI_SECTION, KEY_WINE_FIX, 0, iniPath);
+    
     /* Read last open directory */
     GetPrivateProfileStringW(INI_SECTION, KEY_LAST_OPEN_DIR, L"",
         config->lastOpenDir, MAX_PATH, iniPath);
@@ -126,6 +131,10 @@ void Config_Save(const AppConfig *config)
     WritePrivateProfileStringW(INI_SECTION, KEY_LANGUAGE,
         (config->language == APP_LANG_ENGLISH) ? LANG_STR_ENGLISH : LANG_STR_CHINESE,
         iniPath);
+    
+    /* Write wine fix setting */
+    swprintf(value, 32, L"%d", config->wine_fix);
+    WritePrivateProfileStringW(INI_SECTION, KEY_WINE_FIX, value, iniPath);
     
     /* Write last open directory */
     WritePrivateProfileStringW(INI_SECTION, KEY_LAST_OPEN_DIR,

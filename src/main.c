@@ -62,7 +62,7 @@ static HWND g_hwndBtnD3D12   = NULL;
 static HWND g_hwndBtnStop    = NULL;
 static HWND g_hwndBtnOpen    = NULL;
 static HWND g_hwndBtnAbout   = NULL;
-static HWND g_hwndBtnLang    = NULL;
+static HWND g_hwndBtnSettings = NULL;
 static HWND g_hwndBtnClearLog = NULL;
 static HWND g_hwndBtnExportLog = NULL;
 static HWND g_hwndDisplay    = NULL;
@@ -95,8 +95,8 @@ static void ResizeControls(HWND hwnd);
 static int  OpenFileDialog(HWND hwnd, wchar_t *path, int path_len);
 static void ShowAboutDialog(HWND hwndParent);
 static INT_PTR CALLBACK AboutDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam);
-static void ShowLangSettingsDialog(HWND hwndParent);
-static INT_PTR CALLBACK LangSettingsDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam);
+static void ShowSettingsDialog(HWND hwndParent);
+static INT_PTR CALLBACK SettingsDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam);
 
 /* Helper: create a button */
 static HWND MakeButton(HWND parent, const wchar_t *text, int id, int x, int y, int w)
@@ -157,6 +157,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
     /* Initialize config and language */
     Config_Init(&g_config);
     Lang_SetCurrent(g_config.language);
+    ds_set_wine_fix(g_config.wine_fix);
     lang = Lang_GetStrings();
 
     hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
@@ -245,7 +246,7 @@ static void CreateControls(HWND hwnd)
     x += bw + BTN_GAP;
     g_hwndBtnAbout   = MakeButton(hwnd, lang->btnAbout,      IDC_BTN_ABOUT,       x, ROW3_Y, bw);
     x += bw + BTN_GAP;
-    g_hwndBtnLang    = MakeButton(hwnd, lang->btnLangSettings, IDC_BTN_LANG,   x, ROW3_Y, bw);
+    g_hwndBtnSettings = MakeButton(hwnd, lang->btnSettings, IDC_BTN_SETTINGS, x, ROW3_Y, bw);
 
     /* Log display area (right of buttons) */
     g_hwndLog = CreateWindowExW(
@@ -681,15 +682,16 @@ static void ShowAboutDialog(HWND hwndParent)
     DialogBoxW(NULL, MAKEINTRESOURCEW(IDD_ABOUT), hwndParent, AboutDlgProc);
 }
 
-/* Language settings dialog procedure */
-static INT_PTR CALLBACK LangSettingsDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
+/* Settings dialog procedure */
+static INT_PTR CALLBACK SettingsDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     switch (msg) {
     case WM_INITDIALOG: {
         const LangStrings *lang = Lang_GetStrings();
-        SetWindowTextW(hDlg, lang->langSettingsTitle);
+        SetWindowTextW(hDlg, lang->settingsTitle);
         SetDlgItemTextW(hDlg, IDC_LANG_LABEL, lang->langSettingsLabel);
         SetDlgItemTextW(hDlg, IDC_LANG_HINT, lang->langSettingsHint);
+        SetDlgItemTextW(hDlg, IDC_WINE_FIX_LABEL, lang->wineFixLabel);
         SetDlgItemTextW(hDlg, IDOK, lang->btnOk);
         SetDlgItemTextW(hDlg, IDCANCEL, lang->btnCancel);
 
@@ -701,21 +703,34 @@ static INT_PTR CALLBACK LangSettingsDlgProc(HWND hDlg, UINT msg, WPARAM wParam, 
         /* Select current language */
         int currentLang = Lang_GetCurrent();
         SendMessageW(hCombo, CB_SETCURSEL, (WPARAM)currentLang, 0);
+
+        /* Set wine fix checkbox */
+        CheckDlgButton(hDlg, IDC_WINE_FIX_CHECK, g_config.wine_fix ? BST_CHECKED : BST_UNCHECKED);
         return TRUE;
     }
 
     case WM_COMMAND:
         if (LOWORD(wParam) == IDOK) {
+            /* Get language setting */
             HWND hCombo = GetDlgItem(hDlg, IDC_LANG_COMBO);
             int selected = (int)SendMessageW(hCombo, CB_GETCURSEL, 0, 0);
-            if (selected != CB_ERR && selected != Lang_GetCurrent()) {
-                /* Save new language */
-                g_config.language = selected;
-                Config_Save(&g_config);
+            int langChanged = (selected != CB_ERR && selected != Lang_GetCurrent());
 
-                /* Show restart message */
+            /* Get wine fix setting */
+            int wineFix = (IsDlgButtonChecked(hDlg, IDC_WINE_FIX_CHECK) == BST_CHECKED) ? 1 : 0;
+
+            /* Save settings */
+            if (selected != CB_ERR) {
+                g_config.language = selected;
+            }
+            g_config.wine_fix = wineFix;
+            Config_Save(&g_config);
+            ds_set_wine_fix(wineFix);
+
+            /* Show restart message if language changed */
+            if (langChanged) {
                 const LangStrings *lang = Lang_GetStrings();
-                MessageBoxW(hDlg, lang->langSettingsHint, lang->langSettingsTitle,
+                MessageBoxW(hDlg, lang->langSettingsHint, lang->settingsTitle,
                     MB_OK | MB_ICONINFORMATION);
             }
             EndDialog(hDlg, IDOK);
@@ -730,10 +745,10 @@ static INT_PTR CALLBACK LangSettingsDlgProc(HWND hDlg, UINT msg, WPARAM wParam, 
     return FALSE;
 }
 
-/* Show language settings dialog */
-static void ShowLangSettingsDialog(HWND hwndParent)
+/* Show settings dialog */
+static void ShowSettingsDialog(HWND hwndParent)
 {
-    DialogBoxW(NULL, MAKEINTRESOURCEW(IDD_LANG_SETTINGS), hwndParent, LangSettingsDlgProc);
+    DialogBoxW(NULL, MAKEINTRESOURCEW(IDD_SETTINGS), hwndParent, SettingsDlgProc);
 }
 
 /* Window procedure */
@@ -772,8 +787,8 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         case IDC_BTN_ABOUT:
             ShowAboutDialog(hwnd);
             break;
-        case IDC_BTN_LANG:
-            ShowLangSettingsDialog(hwnd);
+        case IDC_BTN_SETTINGS:
+            ShowSettingsDialog(hwnd);
             break;
         case IDC_BTN_CLEAR_LOG:
             SetWindowTextW(g_hwndLog, L"");

@@ -43,11 +43,26 @@ static IVMRWindowlessControl9 *pVMR9Windowless = NULL;
 /* EVR interface for video display control */
 static IMFVideoDisplayControl  *pEVRDisplay = NULL;
 
+/* Wine fix mode (from config) */
+static int g_wine_fix = 0;
+
+/* Set Wine compatibility fix mode */
+void ds_set_wine_fix(int enable)
+{
+    g_wine_fix = enable;
+}
+
 /* Detect if running under Wine */
 static int ds_is_running_under_wine(void)
 {
     HMODULE hNtdll = GetModuleHandleW(L"ntdll.dll");
     return (hNtdll && GetProcAddress(hNtdll, "wine_server_call") != NULL);
+}
+
+/* Check if Wine fix should be applied */
+static int ds_should_use_wine_fix(void)
+{
+    return g_wine_fix && ds_is_running_under_wine();
 }
 
 static void ds_update_aspect(void)
@@ -248,7 +263,7 @@ int ds_open_dxva2(const wchar_t *filepath, HWND hwnd_display, int enable_dxva2)
         return -1;
     }
 
-    if (enable_dxva2 && !ds_is_running_under_wine()) {
+    if (enable_dxva2 && !ds_should_use_wine_fix()) {
         /* Try to use VMR-9 first (supports DXVA2) */
         hr = CoCreateInstance(&CLSID_VideoMixingRenderer9, NULL, CLSCTX_INPROC_SERVER,
                               &IID_IBaseFilter, (void **)&pRenderer);
@@ -327,9 +342,9 @@ int ds_open_dxva2(const wchar_t *filepath, HWND hwnd_display, int enable_dxva2)
                 Log_Printf(L"DirectShow: Failed to create EVR: 0x%08l", hr);
             }
         }
-    } else if (enable_dxva2 && ds_is_running_under_wine()) {
+    } else if (enable_dxva2 && ds_should_use_wine_fix()) {
         /* Wine: VMR-9/EVR windowless mode not fully supported, use default renderer */
-        Log_Printf(L"DirectShow: Wine detected, using default renderer (VMR-9/EVR windowless not supported)");
+        Log_Printf(L"DirectShow: Wine fix enabled, using default renderer (VMR-9/EVR windowless not supported)");
     }
 
     /* Render all output pins (auto-connects decoder + renderer) */
@@ -597,12 +612,6 @@ int ds_get_video_width(void)
 int ds_get_video_height(void)
 {
     return g_video_h;
-}
-
-/* Helper: convert CLSID to string */
-static void ds_clsid_to_string(REFCLSID clsid, wchar_t *buf, int buf_len)
-{
-    StringFromGUID2(clsid, buf, buf_len);
 }
 
 /* Helper: enumerate filters in a category using ICreateDevEnum */

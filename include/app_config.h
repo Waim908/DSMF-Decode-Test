@@ -13,6 +13,7 @@ int Config_DetectSystemLanguage(void);
 /* Configuration structure */
 typedef struct {
     int language;           /* 0=Chinese, 1=English */
+    int wine_fix;           /* 1=enable Wine compatibility fix for DirectShow */
     wchar_t lastOpenDir[MAX_PATH]; /* Last opened file directory */
 } AppConfig;
 

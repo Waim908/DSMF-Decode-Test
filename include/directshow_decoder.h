@@ -53,4 +53,9 @@ int ds_enum_filters(int category);
  * Returns a string like "VMR-9", "EVR", "Default", or "None" if not playing. */
 const wchar_t *ds_get_renderer_name(void);
 
+/* Set Wine compatibility fix mode.
+ * When enabled, DirectShow + DXVA2 will use default renderer instead of VMR-9/EVR.
+ * This fixes video display issues in Wine environment. */
+void ds_set_wine_fix(int enable);
+
 #endif /* DIRECTSHOW_DECODER_H */

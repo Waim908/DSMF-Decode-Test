@@ -65,13 +65,16 @@ static const LangStrings g_chinese = {
     L"音频文件",
     L"所有文件",
 
-    /* Language settings dialog */
-    L"语言设置",
+    /* Settings dialog */
+    L"设置",
     L"选择界面语言：",
     L"简体中文",
     L"English",
     L"更改语言后需要重启程序才能生效。",
-    L"语言/Language"
+    L"设置",
+    L"兼容性",
+    L"启用 Wine DirectShow 修复（使用默认渲染器）",
+    L"在 Wine 环境下，VMR-9/EVR 的 windowless 模式可能无法正确显示视频。\n启用此选项将使用默认渲染器来解决此问题。"
 };
 
 /* English strings */
@@ -133,13 +136,16 @@ static const LangStrings g_english = {
     L"Audio Files",
     L"All Files",
 
-    /* Language settings dialog */
-    L"Language Settings",
+    /* Settings dialog */
+    L"Settings",
     L"Select interface language:",
     L"简体中文",
     L"English",
     L"Restart is required after changing language.",
-    L"语言/Language"
+    L"Settings",
+    L"Compatibility",
+    L"Enable Wine DirectShow fix (use default renderer)",
+    L"In Wine environment, VMR-9/EVR windowless mode may not display video correctly.\nEnable this option to use default renderer to fix this issue."
 };
 
 /* Get strings for current language */

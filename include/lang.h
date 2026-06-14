@@ -62,13 +62,16 @@ typedef struct {
     const wchar_t *fileTypeAudio;
     const wchar_t *fileTypeAll;
 
-    /* Language settings dialog */
-    const wchar_t *langSettingsTitle;
+    /* Settings dialog */
+    const wchar_t *settingsTitle;
     const wchar_t *langSettingsLabel;
     const wchar_t *langChinese;
     const wchar_t *langEnglish;
     const wchar_t *langSettingsHint;
-    const wchar_t *btnLangSettings;
+    const wchar_t *btnSettings;
+    const wchar_t *wineFixGroup;
+    const wchar_t *wineFixLabel;
+    const wchar_t *wineFixHint;
 } LangStrings;
 
 /* Get language strings for current language */
