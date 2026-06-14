@@ -81,7 +81,7 @@ else
     INCLUDE_DIR=-I./include
     CFLAGS=-O3 -s -std=c99 -DUNICODE -D_UNICODE -DCOBJMACROS -DWINVER=0x0601 -D_WIN32_WINNT=0x0601 -Wall -Wno-unused-variable
     LDFLAGS=-s -mwindows -municode \
-        -lstrmiids -lmfplat -lmf -lmfreadwrite -lmfuuid -levr \
+        -lstrmiids -lmfplat -lmf -lmfreadwrite -lmfuuid -levr -lamstrmid \
         -ld3d9 -ldxva2 -ld3d11 -ld3d12 -ldxgi -ldxguid \
         -lcomctl32 -lgdi32 -luser32 -lole32 -loleaut32 -luuid -lcomdlg32 -lshlwapi -lshell32 -lwinmm
     OBJ_EXT = .o

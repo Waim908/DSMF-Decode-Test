@@ -9,6 +9,15 @@
 #include <stdio.h>
 #include <shlwapi.h>
 
+/* D3D9 required for VMR-9 */
+#include <d3d9.h>
+
+/* VMR-9 interfaces */
+#include <vmr9.h>
+
+/* EVR interfaces */
+#include <evr.h>
+
 /* CLSID_EnhancedVideoRenderer: MSVC has extern in strmif.h, MinGW needs definition */
 #ifndef _MSC_VER
 static const CLSID CLSID_EnhancedVideoRenderer = {0xfa10746c, 0x9b63, 0x4b6c, {0xbc, 0x49, 0xfc, 0x30, 0x0e, 0xa5, 0xf2, 0x56}};
@@ -28,6 +37,12 @@ static int               g_video_w = 0;
 static int               g_video_h = 0;
 static int               g_renderer_type = 0;  /* 0=Default, 1=VMR-9, 2=EVR */
 
+/* VMR-9 interface for windowless mode */
+static IVMRWindowlessControl9 *pVMR9Windowless = NULL;
+
+/* EVR interface for video display control */
+static IMFVideoDisplayControl  *pEVRDisplay = NULL;
+
 static void ds_update_aspect(void)
 {
     if (!pVideo || !g_hwndDisplay) return;
@@ -43,6 +58,18 @@ static void ds_cleanup(void)
         IVideoWindow_put_Visible(pVideo, OAFALSE);
         IVideoWindow_put_AutoShow(pVideo, OAFALSE);
         IVideoWindow_put_Owner(pVideo, 0);
+    }
+
+    /* Release VMR-9 windowless control */
+    if (pVMR9Windowless) {
+        IVMRWindowlessControl9_Release(pVMR9Windowless);
+        pVMR9Windowless = NULL;
+    }
+
+    /* Release EVR display control */
+    if (pEVRDisplay) {
+        IMFVideoDisplayControl_Release(pEVRDisplay);
+        pEVRDisplay = NULL;
     }
 
     /* Force-hide any remaining child windows in the display area (VMR-9/EVR) */
@@ -219,6 +246,24 @@ int ds_open_dxva2(const wchar_t *filepath, HWND hwnd_display, int enable_dxva2)
         hr = CoCreateInstance(&CLSID_VideoMixingRenderer9, NULL, CLSCTX_INPROC_SERVER,
                               &IID_IBaseFilter, (void **)&pRenderer);
         if (SUCCEEDED(hr)) {
+            /* Configure VMR-9 for windowless mode */
+            IVMRFilterConfig9 *pConfig = NULL;
+            hr = IBaseFilter_QueryInterface(pRenderer, &IID_IVMRFilterConfig9, (void**)&pConfig);
+            if (SUCCEEDED(hr)) {
+                IVMRFilterConfig9_SetRenderingMode(pConfig, VMR9Mode_Windowless);
+                IVMRFilterConfig9_Release(pConfig);
+            }
+
+            /* Get IVMRWindowlessControl9 interface */
+            hr = IBaseFilter_QueryInterface(pRenderer, &IID_IVMRWindowlessControl9, (void**)&pVMR9Windowless);
+            if (SUCCEEDED(hr)) {
+                /* Set clipping window */
+                IVMRWindowlessControl9_SetVideoClippingWindow(pVMR9Windowless, hwnd_display);
+                Log_Printf(L"DirectShow: VMR-9 windowless mode configured");
+            } else {
+                Log_Printf(L"DirectShow: Failed to get IVMRWindowlessControl9: 0x%08l", hr);
+            }
+
             hr = IGraphBuilder_AddFilter(pGraph, pRenderer, L"VMR-9");
             if (SUCCEEDED(hr)) {
 #ifdef __MINGW32__
@@ -242,6 +287,21 @@ int ds_open_dxva2(const wchar_t *filepath, HWND hwnd_display, int enable_dxva2)
             hr = CoCreateInstance(&CLSID_EnhancedVideoRenderer, NULL, CLSCTX_INPROC_SERVER,
                                   &IID_IBaseFilter, (void **)&pRenderer);
             if (SUCCEEDED(hr)) {
+                /* Get IMFVideoDisplayControl interface for EVR */
+                IMFGetService *pGetService = NULL;
+                hr = IBaseFilter_QueryInterface(pRenderer, &IID_IMFGetService, (void**)&pGetService);
+                if (SUCCEEDED(hr)) {
+                    hr = IMFGetService_GetService(pGetService, &MR_VIDEO_RENDER_SERVICE, &IID_IMFVideoDisplayControl, (void**)&pEVRDisplay);
+                    if (SUCCEEDED(hr)) {
+                        /* Set clipping window for EVR */
+                        IMFVideoDisplayControl_SetVideoWindow(pEVRDisplay, hwnd_display);
+                        Log_Printf(L"DirectShow: EVR display control configured");
+                    } else {
+                        Log_Printf(L"DirectShow: Failed to get IMFVideoDisplayControl: 0x%08l", hr);
+                    }
+                    IMFGetService_Release(pGetService);
+                }
+
                 hr = IGraphBuilder_AddFilter(pGraph, pRenderer, L"EVR");
                 if (SUCCEEDED(hr)) {
 #ifdef __MINGW32__
@@ -284,19 +344,46 @@ int ds_open_dxva2(const wchar_t *filepath, HWND hwnd_display, int enable_dxva2)
         IVideoWindow_put_MessageDrain(pVideo, (OAHWND)hwnd_display);
         IVideoWindow_put_AutoShow(pVideo, OAFALSE);
 
-        /* Get native video size from IBasicVideo */
+        /* Get native video size */
         g_video_w = 0;
         g_video_h = 0;
-        if (pBasicVideo) {
+        
+        if (g_renderer_type == 1 && pVMR9Windowless) {
+            /* VMR-9: Use IVMRWindowlessControl9::GetNativeVideoSize */
             long vw = 0, vh = 0;
-            IBasicVideo_get_SourceWidth(pBasicVideo, &vw);
-            IBasicVideo_get_SourceHeight(pBasicVideo, &vh);
-            if (vw > 0 && vh > 0) {
+            long arw = 0, arh = 0;
+            hr = IVMRWindowlessControl9_GetNativeVideoSize(pVMR9Windowless, &vw, &vh, &arw, &arh);
+            if (SUCCEEDED(hr) && vw > 0 && vh > 0) {
                 g_video_w = vw;
                 g_video_h = vh;
-                Log_Printf(L"DirectShow: Native video size %ldx%ld", vw, vh);
+                Log_Printf(L"DirectShow: VMR-9 native video size %ldx%ld", vw, vh);
             } else {
-                Log_Printf(L"DirectShow: Failed to get video size (%ldx%ld)", vw, vh);
+                Log_Printf(L"DirectShow: Failed to get VMR-9 video size: 0x%08l", hr);
+            }
+        } else if (g_renderer_type == 2 && pEVRDisplay) {
+            /* EVR: Use IMFVideoDisplayControl::GetNativeVideoSize */
+            SIZE sz;
+            hr = IMFVideoDisplayControl_GetNativeVideoSize(pEVRDisplay, &sz, &sz);
+            if (SUCCEEDED(hr) && sz.cx > 0 && sz.cy > 0) {
+                g_video_w = sz.cx;
+                g_video_h = sz.cy;
+                Log_Printf(L"DirectShow: EVR native video size %ldx%ld", sz.cx, sz.cy);
+            } else {
+                Log_Printf(L"DirectShow: Failed to get EVR video size: 0x%08l", hr);
+            }
+        } else {
+            /* Default: Use IBasicVideo */
+            if (pBasicVideo) {
+                long vw = 0, vh = 0;
+                IBasicVideo_get_SourceWidth(pBasicVideo, &vw);
+                IBasicVideo_get_SourceHeight(pBasicVideo, &vh);
+                if (vw > 0 && vh > 0) {
+                    g_video_w = vw;
+                    g_video_h = vh;
+                    Log_Printf(L"DirectShow: Native video size %ldx%ld", vw, vh);
+                } else {
+                    Log_Printf(L"DirectShow: Failed to get video size (%ldx%ld)", vw, vh);
+                }
             }
         }
 
@@ -317,12 +404,37 @@ int ds_open_dxva2(const wchar_t *filepath, HWND hwnd_display, int enable_dxva2)
                 int draw_x = (display_w - draw_w) / 2;
                 int draw_y = (display_h - draw_h) / 2;
 
-                /* Set video position */
-                IVideoWindow_SetWindowPosition(pVideo, draw_x, draw_y, draw_w, draw_h);
-                Log_Printf(L"DirectShow: Video position set to %dx%d at (%d,%d", draw_w, draw_h, draw_x, draw_y);
+                /* Set video position using the appropriate interface */
+                if (g_renderer_type == 1 && pVMR9Windowless) {
+                    /* VMR-9: Use IVMRWindowlessControl9::SetVideoPosition */
+                    RECT src = {0, 0, g_video_w, g_video_h};
+                    RECT dst = {draw_x, draw_y, draw_x + draw_w, draw_y + draw_h};
+                    IVMRWindowlessControl9_SetVideoPosition(pVMR9Windowless, &src, &dst);
+                    Log_Printf(L"DirectShow: VMR-9 video position set to %dx%d at (%d,%d)", draw_w, draw_h, draw_x, draw_y);
+                } else if (g_renderer_type == 2 && pEVRDisplay) {
+                    /* EVR: Use IMFVideoDisplayControl::SetVideoPosition */
+                    MFVideoNormalizedRect src = {0.0f, 0.0f, 1.0f, 1.0f};
+                    RECT dst = {draw_x, draw_y, draw_x + draw_w, draw_y + draw_h};
+                    IMFVideoDisplayControl_SetVideoPosition(pEVRDisplay, &src, &dst);
+                    Log_Printf(L"DirectShow: EVR video position set to %dx%d at (%d,%d)", draw_w, draw_h, draw_x, draw_y);
+                } else {
+                    /* Default renderer: Use IVideoWindow */
+                    IVideoWindow_SetWindowPosition(pVideo, draw_x, draw_y, draw_w, draw_h);
+                    Log_Printf(L"DirectShow: Video position set to %dx%d at (%d,%d)", draw_w, draw_h, draw_x, draw_y);
+                }
             } else {
                 /* No video size info, fill the window */
-                IVideoWindow_SetWindowPosition(pVideo, 0, 0, display_w, display_h);
+                if (g_renderer_type == 1 && pVMR9Windowless) {
+                    RECT src = {0, 0, g_video_w, g_video_h};
+                    RECT dst = {0, 0, display_w, display_h};
+                    IVMRWindowlessControl9_SetVideoPosition(pVMR9Windowless, &src, &dst);
+                } else if (g_renderer_type == 2 && pEVRDisplay) {
+                    MFVideoNormalizedRect src = {0.0f, 0.0f, 1.0f, 1.0f};
+                    RECT dst = {0, 0, display_w, display_h};
+                    IMFVideoDisplayControl_SetVideoPosition(pEVRDisplay, &src, &dst);
+                } else {
+                    IVideoWindow_SetWindowPosition(pVideo, 0, 0, display_w, display_h);
+                }
             }
         }
 
@@ -426,10 +538,34 @@ void ds_resize(int x, int y, int w, int h)
         int draw_x = x + (w - draw_w) / 2;
         int draw_y = y + (h - draw_h) / 2;
 
-        IVideoWindow_SetWindowPosition(pVideo, draw_x, draw_y, draw_w, draw_h);
+        /* Set video position using the appropriate interface */
+        if (g_renderer_type == 1 && pVMR9Windowless) {
+            /* VMR-9: Use IVMRWindowlessControl9::SetVideoPosition */
+            RECT src = {0, 0, g_video_w, g_video_h};
+            RECT dst = {draw_x, draw_y, draw_x + draw_w, draw_y + draw_h};
+            IVMRWindowlessControl9_SetVideoPosition(pVMR9Windowless, &src, &dst);
+        } else if (g_renderer_type == 2 && pEVRDisplay) {
+            /* EVR: Use IMFVideoDisplayControl::SetVideoPosition */
+            MFVideoNormalizedRect src = {0.0f, 0.0f, 1.0f, 1.0f};
+            RECT dst = {draw_x, draw_y, draw_x + draw_w, draw_y + draw_h};
+            IMFVideoDisplayControl_SetVideoPosition(pEVRDisplay, &src, &dst);
+        } else {
+            /* Default renderer: Use IVideoWindow */
+            IVideoWindow_SetWindowPosition(pVideo, draw_x, draw_y, draw_w, draw_h);
+        }
     } else {
         /* No native size info, fill window */
-        IVideoWindow_SetWindowPosition(pVideo, x, y, w, h);
+        if (g_renderer_type == 1 && pVMR9Windowless) {
+            RECT src = {0, 0, g_video_w, g_video_h};
+            RECT dst = {x, y, x + w, y + h};
+            IVMRWindowlessControl9_SetVideoPosition(pVMR9Windowless, &src, &dst);
+        } else if (g_renderer_type == 2 && pEVRDisplay) {
+            MFVideoNormalizedRect src = {0.0f, 0.0f, 1.0f, 1.0f};
+            RECT dst = {x, y, x + w, y + h};
+            IMFVideoDisplayControl_SetVideoPosition(pEVRDisplay, &src, &dst);
+        } else {
+            IVideoWindow_SetWindowPosition(pVideo, x, y, w, h);
+        }
     }
 }
 
