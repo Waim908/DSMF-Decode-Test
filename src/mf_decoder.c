@@ -980,3 +980,12 @@ double mf_get_video_fps(void) {
 
 int mf_get_dropped_frames(void) { return g_droppedFrames; }
 int mf_get_total_frames(void) { return g_frameCount; }
+
+const wchar_t *mf_get_renderer_name(void)
+{
+    if (!g_active) return L"None";
+    if (g_d3d12_use_hw_render && g_d3d12_initialized) return L"D3D12 Presenter";
+    if (g_d3d11_use_hw_render && g_d3d11_initialized) return L"D3D11 Presenter";
+    if (g_dxva2_use_hw_render && g_dxva2_initialized) return L"EVR";
+    return L"EVR";  /* Media Foundation uses EVR as default renderer */
+}

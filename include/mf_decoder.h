@@ -52,4 +52,8 @@ int mf_get_dropped_frames(void);
 /* Get total frames rendered */
 int mf_get_total_frames(void);
 
+/* Get the name of the current video renderer being used.
+ * Returns a string like "EVR", "D3D11 Presenter", "D3D12 Presenter", "Software", or "None". */
+const wchar_t *mf_get_renderer_name(void);
+
 #endif /* MF_DECODER_H */

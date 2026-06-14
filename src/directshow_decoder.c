@@ -26,6 +26,7 @@ static int               g_dxva2   = 0;
 static HWND              g_hwndDisplay = NULL;
 static int               g_video_w = 0;
 static int               g_video_h = 0;
+static int               g_renderer_type = 0;  /* 0=Default, 1=VMR-9, 2=EVR */
 
 static void ds_update_aspect(void)
 {
@@ -77,6 +78,7 @@ static void ds_cleanup(void)
     g_video_h = 0;
     g_playing = 0;
     g_dxva2 = 0;
+    g_renderer_type = 0;
 }
 
 int ds_open(const wchar_t *filepath, HWND hwnd_display)
@@ -162,6 +164,7 @@ int ds_open(const wchar_t *filepath, HWND hwnd_display)
     ds_enum_filters(1);
 
     g_playing = 0;
+    g_renderer_type = 0;  /* Default renderer */
     return 0;
 }
 
@@ -219,6 +222,7 @@ int ds_open_dxva2(const wchar_t *filepath, HWND hwnd_display, int enable_dxva2)
                 Log_Printf(L"DirectShow: Using VMR-9 renderer (DXVA2 capable");
 #endif
                 g_dxva2 = 1;
+                g_renderer_type = 1;  /* VMR-9 */
             } else {
                 Log_Printf(L"DirectShow: Failed to add VMR-9 filter: 0x%08l", hr);
                 IBaseFilter_Release(pRenderer);
@@ -241,6 +245,7 @@ int ds_open_dxva2(const wchar_t *filepath, HWND hwnd_display, int enable_dxva2)
                     Log_Printf(L"DirectShow: Using EVR renderer (DXVA2 capable");
 #endif
                     g_dxva2 = 1;
+                    g_renderer_type = 2;  /* EVR */
                 } else {
                     Log_Printf(L"DirectShow: Failed to add EVR filter: 0x%08l", hr);
                     IBaseFilter_Release(pRenderer);
@@ -321,6 +326,7 @@ int ds_open_dxva2(const wchar_t *filepath, HWND hwnd_display, int enable_dxva2)
     ds_enum_filters(1);
 
     g_playing = 0;
+    if (!pRenderer) g_renderer_type = 0;  /* Fallback to default renderer */
     return 0;
 }
 
@@ -522,4 +528,14 @@ int ds_enum_filters(int category)
     Log_Printf(L"");
 
     return total;
+}
+
+const wchar_t *ds_get_renderer_name(void)
+{
+    if (!g_playing) return L"None";
+    switch (g_renderer_type) {
+        case 1:  return L"VMR-9";
+        case 2:  return L"EVR";
+        default: return L"Default";
+    }
 }

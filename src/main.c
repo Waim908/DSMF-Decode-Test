@@ -427,7 +427,7 @@ static void StartDirectShow(void)
     ret = ds_play();
     if (ret != 0) { UpdateStatus(L"DirectShow: %ls", lang->msgPlayFailed); ds_stop(); EnableButtons(TRUE); g_switching = 0; return; }
     g_currentMode = 1;
-    swprintf(msg, 512, L"DirectShow: %ls %ls", lang->statusPlaying, g_filePath);
+    swprintf(msg, 512, L"DirectShow [%ls]: %ls %ls", ds_get_renderer_name(), lang->statusPlaying, g_filePath);
     UpdateStatus(L"%ls", msg);
     SetTimer(g_hwndMain, TIMER_RENDER, 100, NULL);
     g_renderTimerActive = 1;
@@ -458,7 +458,7 @@ static void StartDirectShowDXVA2(void)
     ret = ds_play();
     if (ret != 0) { UpdateStatus(L"DirectShow + DXVA2: %ls", lang->msgPlayFailed); ds_stop(); EnableButtons(TRUE); g_switching = 0; return; }
     g_currentMode = 5;
-    swprintf(msg, 512, L"DirectShow + DXVA2: %ls %ls%s", lang->statusPlaying, g_filePath,
+    swprintf(msg, 512, L"DirectShow + DXVA2 [%ls]: %ls %ls%s", ds_get_renderer_name(), lang->statusPlaying, g_filePath,
              ds_is_using_dxva2() ? lang->hwAccel : lang->hwFallback);
     UpdateStatus(L"%ls", msg);
     SetTimer(g_hwndMain, TIMER_RENDER, 100, NULL);
@@ -489,7 +489,7 @@ static void StartMFSoftware(void)
     }
     g_currentMode = 2;
     mf_render_next_frame();
-    swprintf(msg, 512, L"Media Foundation (%ls): %ls", lang->hwSoftware, mf_get_decoder_info());
+    swprintf(msg, 512, L"Media Foundation [%ls] (%ls): %ls", mf_get_renderer_name(), lang->hwSoftware, mf_get_decoder_info());
     UpdateStatus(L"%ls", msg);
     SetTimer(g_hwndMain, TIMER_RENDER, 33, NULL);
     g_renderTimerActive = 1;
@@ -521,7 +521,7 @@ static void StartMFDXVA2(void)
     }
     g_currentMode = 3;
     mf_render_next_frame();
-    swprintf(msg, 512, L"Media Foundation + DXVA2: %ls", mf_get_decoder_info());
+    swprintf(msg, 512, L"Media Foundation + DXVA2 [%ls]: %ls", mf_get_renderer_name(), mf_get_decoder_info());
     UpdateStatus(L"%ls", msg);
     SetTimer(g_hwndMain, TIMER_RENDER, 33, NULL);
     g_renderTimerActive = 1;
@@ -555,7 +555,7 @@ static void StartMFD3D11(void)
     }
     g_currentMode = 4;
     mf_render_next_frame();
-    swprintf(msg, 512, L"Media Foundation + D3D11: %ls", mf_get_decoder_info());
+    swprintf(msg, 512, L"Media Foundation + D3D11 [%ls]: %ls", mf_get_renderer_name(), mf_get_decoder_info());
     UpdateStatus(L"%ls", msg);
     SetTimer(g_hwndMain, TIMER_RENDER, 33, NULL);
     g_renderTimerActive = 1;
@@ -585,7 +585,8 @@ static void StartMFD3D12(void)
     }
     g_currentMode = 6;
     mf_render_next_frame();
-    UpdateStatus(L"%ls", mf_get_decoder_info());
+    swprintf(msg, 512, L"MF + D3D12 [%ls]: %ls", mf_get_renderer_name(), mf_get_decoder_info());
+    UpdateStatus(L"%ls", msg);
     SetTimer(g_hwndMain, TIMER_RENDER, 33, NULL);
     g_renderTimerActive = 1;
     EnableButtons(TRUE);
@@ -827,14 +828,16 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                     int hasVid = ds_has_video();
                     wchar_t statusMsg[512];
                     if (hasVid) {
-                        swprintf(statusMsg, 512, L"DirectShow%s | %dx%d | %02d:%02d / %02d:%02d",
+                        swprintf(statusMsg, 512, L"DirectShow%s [%ls] | %dx%d | %02d:%02d / %02d:%02d",
                                  g_currentMode == 5 ? L" + DXVA2" : L"",
+                                 ds_get_renderer_name(),
                                  ds_get_video_width(), ds_get_video_height(),
                                  (int)pos / 60, (int)pos % 60,
                                  (int)dur / 60, (int)dur % 60);
                     } else {
-                        swprintf(statusMsg, 512, L"DirectShow%s | %ls | %02d:%02d / %02d:%02d",
+                        swprintf(statusMsg, 512, L"DirectShow%s [%ls] | %ls | %02d:%02d / %02d:%02d",
                                  g_currentMode == 5 ? L" + DXVA2" : L"",
+                                 ds_get_renderer_name(),
                                  lang->statusPureAudio,
                                  (int)pos / 60, (int)pos % 60,
                                  (int)dur / 60, (int)dur % 60);
@@ -880,29 +883,29 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                         else if (hasAud)
                             swprintf(audPart, 64, L"%ls", mf_get_audio_codec());
                         if (audPart[0])
-                            swprintf(statusMsg, 512, L"MF %ls | %ls | %ls | %02d:%02d/%02d:%02d drop %d/%d",
-                                     hwTag, vidPart, audPart,
+                            swprintf(statusMsg, 512, L"MF [%ls] %ls | %ls | %ls | %02d:%02d/%02d:%02d drop %d/%d",
+                                     mf_get_renderer_name(), hwTag, vidPart, audPart,
                                      (int)pos / 60, (int)pos % 60, (int)dur / 60, (int)dur % 60,
                                      mf_get_dropped_frames(), mf_get_total_frames());
                         else
-                            swprintf(statusMsg, 512, L"MF %ls | %ls | %02d:%02d/%02d:%02d drop %d/%d",
-                                     hwTag, vidPart,
+                            swprintf(statusMsg, 512, L"MF [%ls] %ls | %ls | %02d:%02d/%02d:%02d drop %d/%d",
+                                     mf_get_renderer_name(), hwTag, vidPart,
                                      (int)pos / 60, (int)pos % 60, (int)dur / 60, (int)dur % 60,
                                      mf_get_dropped_frames(), mf_get_total_frames());
                     } else if (hasAud) {
                         UINT32 abr = mf_get_audio_bitrate();
                         if (abr > 0) {
-                            swprintf(statusMsg, 512, L"MF %ls | %ls %ls %ukbps | %02d:%02d/%02d:%02d",
-                                     hwTag, lang->statusPureAudio, mf_get_audio_codec(), abr / 1000,
+                            swprintf(statusMsg, 512, L"MF [%ls] %ls | %ls %ls %ukbps | %02d:%02d/%02d:%02d",
+                                     mf_get_renderer_name(), hwTag, lang->statusPureAudio, mf_get_audio_codec(), abr / 1000,
                                      (int)pos / 60, (int)pos % 60, (int)dur / 60, (int)dur % 60);
                         } else {
-                            swprintf(statusMsg, 512, L"MF %ls | %ls %ls | %02d:%02d/%02d:%02d",
-                                     hwTag, lang->statusPureAudio, mf_get_audio_codec(),
+                            swprintf(statusMsg, 512, L"MF [%ls] %ls | %ls %ls | %02d:%02d/%02d:%02d",
+                                     mf_get_renderer_name(), hwTag, lang->statusPureAudio, mf_get_audio_codec(),
                                      (int)pos / 60, (int)pos % 60, (int)dur / 60, (int)dur % 60);
                         }
                     } else {
-                        swprintf(statusMsg, 512, L"MF %ls | %02d:%02d/%02d:%02d",
-                                 hwTag,
+                        swprintf(statusMsg, 512, L"MF [%ls] %ls | %02d:%02d/%02d:%02d",
+                                 mf_get_renderer_name(), hwTag,
                                  (int)pos / 60, (int)pos % 60, (int)dur / 60, (int)dur % 60);
                     }
                     UpdateStatus(statusMsg);

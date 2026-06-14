@@ -49,4 +49,8 @@ int ds_get_video_height(void);
  * Returns the number of filters found. */
 int ds_enum_filters(int category);
 
+/* Get the name of the current video renderer being used.
+ * Returns a string like "VMR-9", "EVR", "Default", or "None" if not playing. */
+const wchar_t *ds_get_renderer_name(void);
+
 #endif /* DIRECTSHOW_DECODER_H */
