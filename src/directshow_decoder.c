@@ -43,6 +43,13 @@ static IVMRWindowlessControl9 *pVMR9Windowless = NULL;
 /* EVR interface for video display control */
 static IMFVideoDisplayControl  *pEVRDisplay = NULL;
 
+/* Detect if running under Wine */
+static int ds_is_running_under_wine(void)
+{
+    HMODULE hNtdll = GetModuleHandleW(L"ntdll.dll");
+    return (hNtdll && GetProcAddress(hNtdll, "wine_server_call") != NULL);
+}
+
 static void ds_update_aspect(void)
 {
     if (!pVideo || !g_hwndDisplay) return;
@@ -241,7 +248,7 @@ int ds_open_dxva2(const wchar_t *filepath, HWND hwnd_display, int enable_dxva2)
         return -1;
     }
 
-    if (enable_dxva2) {
+    if (enable_dxva2 && !ds_is_running_under_wine()) {
         /* Try to use VMR-9 first (supports DXVA2) */
         hr = CoCreateInstance(&CLSID_VideoMixingRenderer9, NULL, CLSCTX_INPROC_SERVER,
                               &IID_IBaseFilter, (void **)&pRenderer);
@@ -320,6 +327,9 @@ int ds_open_dxva2(const wchar_t *filepath, HWND hwnd_display, int enable_dxva2)
                 Log_Printf(L"DirectShow: Failed to create EVR: 0x%08l", hr);
             }
         }
+    } else if (enable_dxva2 && ds_is_running_under_wine()) {
+        /* Wine: VMR-9/EVR windowless mode not fully supported, use default renderer */
+        Log_Printf(L"DirectShow: Wine detected, using default renderer (VMR-9/EVR windowless not supported)");
     }
 
     /* Render all output pins (auto-connects decoder + renderer) */
