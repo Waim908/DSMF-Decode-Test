@@ -12,6 +12,8 @@
 
 对于 Wine，大多数视频与音频会交给 GStreamer 框架进行处理。只要你 GStreamer 插件集合足够完整，对于 WMV 这种特殊格式，Wine 可以直接绕过 GStreamer 完成解码。WMV 视频在 Wine 和 Windows DirectShow 中的表现都相当不错。
 
+![DSMF](dsmf.png)
+
 ## 为什么我在 Wine 安装的第三方解码器（如 K-Lite）完全没有任何作用？通过设置 `winegstreamer.dll` 为禁用也不行？
 
 首先，必须否定在 Wine 或模拟器社区广为流传的方法（最初在 mobox 中见过）：
@@ -52,6 +54,12 @@ HKEY_CLASSES_ROOT\CLSID\{083863F1-70DE-11D0-BD40-00A0C911CE86}\Instance\{F9D8D64
 ```
 
 如果需要恢复 GStreamer 的调用，重新导入注册表即可。
+
+K-lite正常生效之后，你可以在系统任务栏看到以下图标：
+
+![KDE-taskbar](kde-taskbar.png)
+
+![wine-taskbar](wine-taskbar.png)
 
 ## CLSID
 
