@@ -13,28 +13,32 @@ on:
       arch:
         description: 'Target architecture'
         required: true
-        default: 'amd64'
+        default: 'all'
         type: choice
         options:
+          - all
           - amd64
           - x86
 
 jobs:
   msvc-build:
     runs-on: windows-2022
+    strategy:
+      matrix:
+        arch: ${{ github.event.inputs.arch == 'all' && fromJSON('["amd64", "x86"]') || fromJSON(format('["{0}"]', github.event.inputs.arch)) }}
     steps:
-      - name: Configure build for ${{ github.event.inputs.arch }}
+      - name: Configure build for ${{ matrix.arch }}
         uses: ilammy/msvc-dev-cmd@v1
         with:
-          arch: ${{ github.event.inputs.arch }}
-      
+          arch: ${{ matrix.arch }}
+
       - name: Build DSMF-Decode-Test
         run: |
           chcp 65001
           pushd C:\
           git clone -b ${{ github.event.inputs.branch }} --depth=1 https://github.com/Waim908/DSMF-Decode-Test.git
           cd DSMF-Decode-Test
-          if ("${{ github.event.inputs.arch }}" -eq "x86") {
+          if ("${{ matrix.arch }}" -eq "x86") {
             .\build.bat ARCH=32
           } else {
             .\build.bat ARCH=64
@@ -43,5 +47,5 @@ jobs:
       - name: Upload EXE artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: DSMF-Decode-Test-EXEs-${{ github.event.inputs.arch }}
+          name: DSMF-Decode-Test-EXEs-${{ matrix.arch }}
           path: C:\DSMF-Decode-Test\*.exe
