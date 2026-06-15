@@ -42,46 +42,42 @@ jobs:
           path: C:\DSMF-Decode-Test\*.exe
 
   mingw64-build:
-    runs-on: windows-2025-vs2026
+    runs-on: ubuntu-26.04
     steps:
-      - name: Setup MSYS2 with MinGW-w64 and make
-        uses: msys2/setup-msys2@v2
-        with:
-          install: mingw-w64-x86_64-gcc make
-          msystem: MINGW64
-          update: true
+      - name: install MinGW-w64
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mingw-w64
 
       - name: Clone repository
-        shell: cmd
         run: |
-          pushd C:\
+          cd /tmp
           git clone -b ${{ github.event.inputs.branch }} --depth=1 https://github.com/Waim908/DSMF-Decode-Test.git
 
       - name: Build for x86_64 (64-bit)
-        shell: msys2 {0}
         run: |
-          cd /c/DSMF-Decode-Test
-          make ARCH=64 -j$(nproc)
-          mkdir -p /c/artifacts/mingw64/x64
-          cp *.exe /c/artifacts/mingw64/x64/ || true
+          mkdir /tmp/x64-build
+          cd /tmp/DSMF-Decode-Test
+          make ARCH=64 -j$(nproc) || exit 1
+          mv *.exe /tmp/x64-build/
 
       - name: Build for i686 (32-bit)
-        shell: msys2 {0}
         run: |
-          cd /c/DSMF-Decode-Test
+          mkdir /tmp/x86-build
+          cd /tmp/DSMF-Decode-Test
           # make clean
-          make ARCH=32 -j$(nproc)
-          mkdir -p /c/artifacts/mingw64/x86
-          cp *.exe /c/artifacts/mingw64/x86/ || true
+          make ARCH=32 -j$(nproc) || exit 1
+          mv *.exe /tmp/x86-build/
 
       - name: Upload EXE artifacts (MinGW-w64 x64)
         uses: actions/upload-artifact@v4
         with:
           name: DSMF-Decode-Test-EXEs-mingw64-x64
-          path: C:\artifacts\mingw64\x64\*.exe
+          path: /tmp/x64-build/*.exe
 
       - name: Upload EXE artifacts (MinGW-w64 x86)
         uses: actions/upload-artifact@v4
         with:
           name: DSMF-Decode-Test-EXEs-mingw64-x86
-          path: C:\artifacts\mingw64\x86\*.exe
+          path: /tmp/x86-build/*.exe
+
