@@ -954,7 +954,7 @@ int mf_render_next_frame(void)
 
         if (g_d3d12_texture) {
             /* Upload NV12 data to D3D12 texture */
-            if (d3d12_video_upload_texture(g_d3d12_texture, data, g_stride, 0) == 0) {
+            if (d3d12_video_upload_texture(data, g_stride, 0) == 0) {
                 /* Use video processor to render */
                 d3d12_video_processor_render(g_d3d12_texture, NULL);
             } else {
