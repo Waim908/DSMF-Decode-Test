@@ -119,6 +119,11 @@ int d3d12_video_init(HWND hwnd, int width, int height)
     HRESULT hr;
     IDXGIFactory4 *pFactory = NULL;
 
+#ifdef __MINGW32__
+    Log_Printf(L"D3D12: Video init skipped in MinGW build (d3d12video.h structures may differ)");
+    return -1;
+#endif
+
     d3d12_video_cleanup();
 
     if (!hwnd || width <= 0 || height <= 0)
