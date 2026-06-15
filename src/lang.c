@@ -9,7 +9,7 @@ static int g_currentLang = LANG_CHINESE;
 /* Chinese strings */
 static const LangStrings g_chinese = {
     /* Window title */
-    L"DirectShowMediaFoundationDecodeTest",
+    L"DirectShow Media Foundation Decode Test",
     
     /* Buttons */
     L"DirectShow 播放",
@@ -80,7 +80,7 @@ static const LangStrings g_chinese = {
 /* English strings */
 static const LangStrings g_english = {
     /* Window title */
-    L"DirectShowMediaFoundationDecodeTest",
+    L"DirectShow Media Foundation Decode Test",
     
     /* Buttons */
     L"DirectShow Play",

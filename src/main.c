@@ -39,6 +39,17 @@
 #define COMPILER_INFO_ARGS __GNUC__, __GNUC_MINOR__, __GNUC_PATCHLEVEL__
 #endif
 
+/* Architecture detection */
+#if defined(_M_AMD64) || defined(__x86_64__) || defined(__amd64__)
+#define ARCH_STR L"x64"
+#elif defined(_M_IX86) || defined(__i386__)
+#define ARCH_STR L"x86"
+#elif defined(_M_ARM64) || defined(__aarch64__)
+#define ARCH_STR L"ARM64"
+#else
+#define ARCH_STR L"Unknown"
+#endif
+
 /* Window class names */
 static const wchar_t CLASS_NAME[] = L"VideoDecoderTestClass";
 
@@ -182,8 +193,12 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
     wc.hIconSm        = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_ICON1));
     RegisterClassExW(&wc);
 
+    /* Build window title with architecture info */
+    wchar_t windowTitle[256];
+    swprintf(windowTitle, 256, L"%ls (%ls)", lang->windowTitle, ARCH_STR);
+
     g_hwndMain = CreateWindowExW(
-        0, CLASS_NAME, lang->windowTitle,
+        0, CLASS_NAME, windowTitle,
         WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
         CW_USEDEFAULT, CW_USEDEFAULT, 960, 640,
         NULL, NULL, hInstance, NULL);
