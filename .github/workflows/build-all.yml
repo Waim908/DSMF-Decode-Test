@@ -10,31 +10,26 @@ on:
         description: 'Branch to build'
         required: true
         default: 'main'
-      arch:
-        description: 'Target architecture'
-        required: true
-        default: 'amd64'
-        type: choice
-        options:
-          - amd64
-          - x86
 
 jobs:
   msvc-build:
-    runs-on: windows-2022
+    runs-on: windows-2025-vs2026
+    strategy:
+      matrix:
+        arch: [amd64, x86]
     steps:
-      - name: Configure build for ${{ github.event.inputs.arch }}
+      - name: Configure build for ${{ matrix.arch }}
         uses: ilammy/msvc-dev-cmd@v1
         with:
-          arch: ${{ github.event.inputs.arch }}
-      
+          arch: ${{ matrix.arch }}
+
       - name: Build DSMF-Decode-Test
         run: |
           chcp 65001
           pushd C:\
           git clone -b ${{ github.event.inputs.branch }} --depth=1 https://github.com/Waim908/DSMF-Decode-Test.git
           cd DSMF-Decode-Test
-          if ("${{ github.event.inputs.arch }}" -eq "x86") {
+          if ("${{ matrix.arch }}" -eq "x86") {
             .\build.bat ARCH=32
           } else {
             .\build.bat ARCH=64
@@ -43,5 +38,49 @@ jobs:
       - name: Upload EXE artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: DSMF-Decode-Test-EXEs-${{ github.event.inputs.arch }}
+          name: DSMF-Decode-Test-EXEs-${{ matrix.arch }}
           path: C:\DSMF-Decode-Test\*.exe
+
+  mingw64-build:
+    runs-on: windows-2025-vs2026
+    steps:
+      - name: Setup MSYS2 with MinGW-w64 and make
+        uses: msys2/setup-msys2@v2
+        with:
+          install: mingw-w64-x86_64-gcc make
+          msystem: MINGW64
+          update: true
+
+      - name: Clone repository
+        shell: msys2 {0}
+        run: |
+          git clone -b ${{ github.event.inputs.branch }} --depth=1 https://github.com/Waim908/DSMF-Decode-Test.git /c/DSMF-Decode-Test
+
+      - name: Build for x86_64 (64-bit)
+        shell: msys2 {0}
+        run: |
+          cd /c/DSMF-Decode-Test
+          make ARCH=64 -j$(nproc)
+          mkdir -p /c/artifacts/mingw64/x64
+          cp *.exe /c/artifacts/mingw64/x64/ || true
+
+      - name: Build for i686 (32-bit)
+        shell: msys2 {0}
+        run: |
+          cd /c/DSMF-Decode-Test
+          # make clean
+          make ARCH=32 -j$(nproc)
+          mkdir -p /c/artifacts/mingw64/x86
+          cp *.exe /c/artifacts/mingw64/x86/ || true
+
+      - name: Upload EXE artifacts (MinGW-w64 x64)
+        uses: actions/upload-artifact@v4
+        with:
+          name: DSMF-Decode-Test-EXEs-mingw64-x64
+          path: C:\artifacts\mingw64\x64\*.exe
+
+      - name: Upload EXE artifacts (MinGW-w64 x86)
+        uses: actions/upload-artifact@v4
+        with:
+          name: DSMF-Decode-Test-EXEs-mingw64-x86
+          path: C:\artifacts\mingw64\x86\*.exe
