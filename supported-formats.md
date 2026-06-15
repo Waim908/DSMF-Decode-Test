@@ -490,6 +490,26 @@ Wine 通过 DirectShow DMO（DirectX Media Object）和 Media Foundation MFT（M
 
 Wine 通过 `winedmo` 库（基于 FFmpeg）实现媒体解复用和解码，可以绕过 GStreamer 框架。
 
+**重要说明**：
+- 以下格式仅表示 winedmo 支持的格式，但实际使用还需要满足其他条件
+- **选择逻辑**（`wine/dlls/mfsrcsnk/media_source.c:2044-2050`）：
+  ```c
+  if ((status = winedmo_demuxer_check("video/mp4")) || use_gst_byte_stream_handler())
+  {
+      // 使用 GStreamer 字节流处理器
+      return CoCreateInstance(&CLSID_GStreamerByteStreamHandler, ...);
+  }
+  // 使用 winedmo 处理器
+  return byte_stream_plugin_create(...);
+  ```
+- **只有同时满足以下条件才会使用 winedmo**：
+  1. `winedmo_demuxer_check()` 返回 `STATUS_SUCCESS`（FFmpeg 支持该格式）
+  2. `use_gst_byte_stream_handler()` 返回 `FALSE`（注册表设置 `DisableGstByteStreamHandler` 为 `1`）
+- **即使设置了注册表禁用 GStreamer，仍可能调用 GStreamer 的原因**：
+  1. winedmo 不支持该格式（不在以下列表中）
+  2. FFmpeg 未安装（Wine 编译时使用 `--without-ffmpeg`）
+  3. winedmo 尚未开发完成（在 wine11.11 中可能仍回退到 GStreamer）
+
 #### 支持的容器格式
 
 | 容器格式 | MIME 类型 | 文件扩展名 | 实现文件 |
@@ -933,3 +953,21 @@ Windows 侧 (winegstreamer.dll)                    Unix 侧 (winegstreamer.so)
 - 该配置仅对 Media Foundation 字节流处理器有效
 - DirectShow 路径不受此配置影响
 - 如果 FFmpeg 不支持某种格式，仍会回退到 GStreamer
+- **选择逻辑**（位于 `wine/dlls/mfsrcsnk/media_source.c:2044-2050`）：
+  ```c
+  if ((status = winedmo_demuxer_check("video/mp4")) || use_gst_byte_stream_handler())
+  {
+      // 使用 GStreamer 字节流处理器
+      return CoCreateInstance(&CLSID_GStreamerByteStreamHandler, ...);
+  }
+  // 使用 winedmo 处理器
+  return byte_stream_plugin_create(...);
+  ```
+- **只有同时满足以下条件才会使用 winedmo**：
+  1. `winedmo_demuxer_check()` 返回 `STATUS_SUCCESS`（FFmpeg 支持该格式）
+  2. `use_gst_byte_stream_handler()` 返回 `FALSE`（注册表设置 `DisableGstByteStreamHandler` 为 `1`）
+- **winedmo 支持的格式**（`wine/dlls/winedmo/unix_demuxer.c:81-97`）：
+  - 容器：MP4、AVI、WAV、ASF、WMV、WMA、MPEG、MP3
+  - 视频编码：H.264、MPEG-1、VP9、原始视频
+  - 音频编码：AAC、MP1、MP3、WMA v1/v2/Pro/Voice/Lossless、PCM、IEEE Float
+- **即便满足条件也不一定有效**，在wine构建中可以通过```--without-ffmpeg```来彻底禁用ffmpeg，或者未禁用也无法保证winedmo成功调用到ffmpeg，**winedmo没有开发完成**，在wine11.11中，可能仍然为gstreamer。
