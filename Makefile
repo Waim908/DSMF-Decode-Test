@@ -59,12 +59,24 @@ else
     endif
 endif
 
-# Set RC and shell commands based on toolchain
-ifeq ($(TOOLCHAIN),msvc)
-    RC ?= rc.exe
+# Set shell commands based on actual OS (not toolchain)
+ifeq ($(UNAME_S),Linux)
+    RM = rm -f
+    MKDIR = mkdir -p
+    RMDIR = rm -rf obj
+else
     RM = del
     MKDIR = mkdir
-    RMDIR = del /q obj\*.obj 2>nul || exit 0
+    ifeq ($(TOOLCHAIN),msvc)
+        RMDIR = del /q obj\*.obj 2>nul || exit 0
+    else
+        RMDIR = del /q obj\*.o 2>nul || exit 0
+    endif
+endif
+
+# Set RC based on toolchain
+ifeq ($(TOOLCHAIN),msvc)
+    RC ?= rc.exe
 else
     ifeq ($(UNAME_S),Linux)
         ifeq ($(ARCH),32)
@@ -72,14 +84,8 @@ else
         else
             RC ?= x86_64-w64-mingw32-windres
         endif
-        RM = rm -f
-        MKDIR = mkdir -p
-        RMDIR = rm -rf obj
     else
         RC ?= windres
-        RM = del
-        MKDIR = mkdir
-        RMDIR = del /q obj\*.o 2>nul || exit 0
     endif
 endif
 
@@ -116,15 +122,9 @@ endif
 OBJS=obj/main$(OBJ_EXT) obj/directshow_decoder$(OBJ_EXT) obj/mf_decoder$(OBJ_EXT) obj/dxva2_helper$(OBJ_EXT) obj/d3d11_video_helper$(OBJ_EXT) obj/d3d12_video_helper$(OBJ_EXT) obj/app_config$(OBJ_EXT) obj/lang$(OBJ_EXT)
 RES=obj/resource$(RES_EXT)
 
-# Detect build flag changes and force recompilation
-CURFLAGS := $(CFLAGS) $(INCLUDE_DIR)
-SAVEDFLAGS := $(shell cat .cflags 2>/dev/null)
-
-ifneq ($(CURFLAGS),$(SAVEDFLAGS))
-  $(shell rm -rf obj)
-  $(shell echo '$(CURFLAGS)' > .cflags)
-  $(info Build flags changed, forcing clean build...)
-endif
+# Auto-clean obj directory before each build
+$(shell $(RMDIR) 2>/dev/null)
+$(shell $(MKDIR) obj 2>/dev/null)
 
 all: ${EXE_NAME}
 
