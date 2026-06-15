@@ -1,4 +1,4 @@
-name: Build DSMF-Decode-Test on MSVC Toolchain (Win2022)
+name: Build All
 
 permissions:
   contents: write
