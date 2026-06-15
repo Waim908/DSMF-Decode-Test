@@ -479,7 +479,17 @@ int ds_play(void)
 {
     if (!pControl) return -1;
     HRESULT hr = IMediaControl_Run(pControl);
-    if (SUCCEEDED(hr)) { g_playing = 1; return 0; }
+    if (SUCCEEDED(hr)) {
+        g_playing = 1;
+        /* Wine fix: Re-show video window after starting playback for default renderer */
+        if (g_renderer_type == 0 && pVideo && g_hwndDisplay) {
+            Sleep(50);  /* Give Wine time to initialize the video window */
+            IVideoWindow_put_Visible(pVideo, OATRUE);
+            RedrawWindow(g_hwndDisplay, NULL, NULL,
+                RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+        }
+        return 0;
+    }
     Log_Printf(L"DirectShow: Run failed: 0x%08l", hr);
     return -1;
 }

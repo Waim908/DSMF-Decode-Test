@@ -567,7 +567,12 @@ static void StartMFD3D11(void)
     UpdateStatus(L"Media Foundation + D3D11: %ls", lang->statusInit);
     if (!d3d11_video_check_support())
         UpdateStatus(L"D3D11: %ls", lang->statusHwUnavailable);
-    if (d3d11_video_init(g_hwndDisplay, 1920, 1080) != 0)
+    /* Use actual display area size instead of fixed 1920x1080 */
+    RECT rcD3D11;
+    GetClientRect(g_hwndDisplay, &rcD3D11);
+    int d3d11_w = rcD3D11.right > 0 ? rcD3D11.right : 1920;
+    int d3d11_h = rcD3D11.bottom > 0 ? rcD3D11.bottom : 1080;
+    if (d3d11_video_init(g_hwndDisplay, d3d11_w, d3d11_h) != 0)
         UpdateStatus(L"D3D11: %ls", lang->statusHwInitFailed);
     int ret = mf_open(g_filePath, g_hwndDisplay, 2);
     if (ret != 0) {
