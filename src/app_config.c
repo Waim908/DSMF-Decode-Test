@@ -34,14 +34,15 @@ int Config_DetectSystemLanguage(void)
     return APP_LANG_ENGLISH;
 }
 
-/* Get path to INI file (same directory as exe) */
+/* Get path to INI file (same directory as exe, fixed name) */
 void Config_GetIniPath(wchar_t *path, int path_len)
 {
     GetModuleFileNameW(NULL, path, path_len);
-    /* Replace .exe extension with .ini */
-    wchar_t *dot = wcsrchr(path, L'.');
-    if (dot) {
-        wcscpy_s(dot, path_len - (dot - path), L".ini");
+    /* Replace exe filename with fixed ini name */
+    wchar_t *slash = wcsrchr(path, L'\\');
+    if (!slash) slash = wcsrchr(path, L'/');
+    if (slash) {
+        wcscpy_s(slash + 1, path_len - (slash + 1 - path), L"DSMF-Decode-Test.ini");
     }
 }
 

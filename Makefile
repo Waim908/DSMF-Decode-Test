@@ -3,6 +3,22 @@
 #   make CC=x86_64-w64-mingw32-gcc    (Linux cross-compile)
 #   make CC=gcc                       (Windows MinGW)
 #   make CC=cl.exe                    (Windows MSVC)
+#   make ARCH=32                      (Build 32-bit version)
+#   make ARCH=64                      (Build 64-bit version, default)
+
+# Architecture selection (default: 64-bit)
+ARCH ?= 64
+ifeq ($(ARCH),32)
+    ARCH_SUFFIX = 32
+    ARCH_FLAG = -m32
+    MSVC_ARCH = x86
+    MSVC_MACHINE = X86
+else
+    ARCH_SUFFIX = 64
+    ARCH_FLAG = -m64
+    MSVC_ARCH = amd64
+    MSVC_MACHINE = X64
+endif
 
 UNAME_S := $(shell uname -s 2>/dev/null || echo Windows)
 
@@ -28,7 +44,11 @@ ifeq ($(USER_CC),1)
 else
     # Auto-detect
     ifeq ($(UNAME_S),Linux)
-        CC = x86_64-w64-mingw32-gcc
+        ifeq ($(ARCH),32)
+            CC = i686-w64-mingw32-gcc
+        else
+            CC = x86_64-w64-mingw32-gcc
+        endif
         TOOLCHAIN = mingw
     else ifneq ($(shell where cl.exe 2>nul),)
         CC = cl.exe
@@ -47,7 +67,11 @@ ifeq ($(TOOLCHAIN),msvc)
     RMDIR = del /q obj\*.obj 2>nul || exit 0
 else
     ifeq ($(UNAME_S),Linux)
-        RC ?= x86_64-w64-mingw32-windres
+        ifeq ($(ARCH),32)
+            RC ?= i686-w64-mingw32-windres
+        else
+            RC ?= x86_64-w64-mingw32-windres
+        endif
         RM = rm -f
         MKDIR = mkdir -p
         RMDIR = rm -rf obj
@@ -59,18 +83,18 @@ else
     endif
 endif
 
-# Set executable name based on toolchain
+# Set executable name based on toolchain and architecture
 ifeq ($(TOOLCHAIN),msvc)
-    EXE_NAME=DSMF-Decode-Test-msvc.exe
+    EXE_NAME=DSMF-Decode-Test-msvc$(ARCH_SUFFIX).exe
 else
-    EXE_NAME=DSMF-Decode-Test-mingw.exe
+    EXE_NAME=DSMF-Decode-Test-mingw$(ARCH_SUFFIX).exe
 endif
 
 # Set flags and file extensions based on toolchain
 ifeq ($(TOOLCHAIN),msvc)
     INCLUDE_DIR=/I./include
     CFLAGS=/O2 /std:c11 /utf-8 /DUNICODE /D_UNICODE /DCOBJMACROS /DWINVER=0x0601 /D_WIN32_WINNT=0x0601 /W4 /wd4100 /wd4189
-    LDFLAGS=/SUBSYSTEM:WINDOWS /ENTRY:wWinMainCRTStartup \
+    LDFLAGS=/SUBSYSTEM:WINDOWS /ENTRY:wWinMainCRTStartup /MACHINE:$(MSVC_MACHINE) \
         strmiids.lib mfplat.lib mf.lib mfreadwrite.lib mfuuid.lib evr.lib \
         d3d9.lib dxva2.lib d3d11.lib d3d12.lib dxgi.lib dxguid.lib \
         comctl32.lib gdi32.lib user32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib shlwapi.lib shell32.lib winmm.lib
@@ -79,8 +103,8 @@ ifeq ($(TOOLCHAIN),msvc)
     RES_FLAGS = /nologo /I./include /I./res /fo
 else
     INCLUDE_DIR=-I./include
-    CFLAGS=-O3 -s -std=c99 -DUNICODE -D_UNICODE -DCOBJMACROS -DWINVER=0x0601 -D_WIN32_WINNT=0x0601 -Wall -Wno-unused-variable
-    LDFLAGS=-s -mwindows -municode \
+    CFLAGS=-O3 -s -std=c99 -DUNICODE -D_UNICODE -DCOBJMACROS -DWINVER=0x0601 -D_WIN32_WINNT=0x0601 -Wall -Wno-unused-variable $(ARCH_FLAG)
+    LDFLAGS=-s -mwindows -municode $(ARCH_FLAG) \
         -lstrmiids -lmfplat -lmf -lmfreadwrite -lmfuuid -levr -lamstrmid \
         -ld3d9 -ldxva2 -ld3d11 -ld3d12 -ldxgi -ldxguid \
         -lcomctl32 -lgdi32 -luser32 -lole32 -loleaut32 -luuid -lcomdlg32 -lshlwapi -lshell32 -lwinmm
@@ -127,7 +151,7 @@ endif
 
 clean:
 	${RMDIR}
-	${RM} ${EXE_NAME}
+	${RM} DSMF-Decode-Test-mingw32.exe DSMF-Decode-Test-mingw64.exe DSMF-Decode-Test-msvc32.exe DSMF-Decode-Test-msvc64.exe
 	${RM} .cflags
 
 obj:

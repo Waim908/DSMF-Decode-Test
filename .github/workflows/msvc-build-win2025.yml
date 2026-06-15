@@ -10,15 +10,23 @@ on:
         description: "Branch to build"
         required: true
         default: "main"
+      arch:
+        description: "Target architecture"
+        required: true
+        default: "amd64"
+        type: choice
+        options:
+          - amd64
+          - x86
 
 jobs:
   msvc-build:
     runs-on: windows-2025-vs2026
     steps:
-      - name: Configure build for amd64
+      - name: Configure build for ${{ github.event.inputs.arch }}
         uses: ilammy/msvc-dev-cmd@v1
         with:
-          arch: amd64
+          arch: ${{ github.event.inputs.arch }}
 
       - name: Build DSMF-Decode-Test
         run: |
@@ -26,10 +34,14 @@ jobs:
           pushd C:\
           git clone -b ${{ github.event.inputs.branch }} --depth=1 https://github.com/Waim908/DSMF-Decode-Test.git
           cd DSMF-Decode-Test
-          .\build.bat
+          if ("${{ github.event.inputs.arch }}" -eq "x86") {
+            .\build.bat ARCH=32
+          } else {
+            .\build.bat ARCH=64
+          }
 
       - name: Upload EXE artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: DSMF-Decode-Test-EXEs
+          name: DSMF-Decode-Test-EXEs-${{ github.event.inputs.arch }}
           path: C:\DSMF-Decode-Test\*.exe
