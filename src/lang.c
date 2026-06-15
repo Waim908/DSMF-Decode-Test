@@ -57,7 +57,7 @@ static const LangStrings g_chinese = {
     
     /* About dialog */
     L"关于 DSMF-Decode-Test",
-    L"版本：0.1",
+    L"版本：" APP_VERSION_STRING,
     
     /* File dialog */
     L"选择媒体文件",
@@ -128,7 +128,7 @@ static const LangStrings g_english = {
     
     /* About dialog */
     L"About DSMF-Decode-Test",
-    L"Version: 0.1",
+    L"Version: " APP_VERSION_STRING,
     
     /* File dialog */
     L"Select Media File",

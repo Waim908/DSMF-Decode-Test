@@ -3,6 +3,11 @@
 
 #include "app_config.h"
 
+/* Application version */
+#define APP_VERSION_MAJOR 0
+#define APP_VERSION_MINOR 1
+#define APP_VERSION_STRING L"0.1"
+
 /* Language string structure */
 typedef struct {
     /* Window title */
