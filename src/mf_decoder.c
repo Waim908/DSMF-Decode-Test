@@ -564,6 +564,8 @@ int mf_open(const wchar_t *filepath, HWND hwnd_display, int enable_dxva2)
         /* D3D12 mode */
 #ifdef __MINGW32__
         Log_Printf(L"MF: D3D12 mode (MinGW build, software decoding only - D3D12 video API not supported)");
+        /* MinGW: skip D3D12 initialization, use software rendering */
+        (void)hwnd_display;
 #else
         Log_Printf(L"MF: Initializing D3D12 hardware acceleration..");
 
@@ -572,22 +574,23 @@ int mf_open(const wchar_t *filepath, HWND hwnd_display, int enable_dxva2)
             /* Initialize D3D12 device */
             if (d3d12_video_init(hwnd_display, g_width, g_height) != 0) {
                 Log_Printf(L"MF: D3D12 device init failed, falling back to software decoding");
-                goto d3d12_failed;
+            } else {
+                /* Initialize video processor for rendering */
+                if (d3d12_video_processor_init() == 0) {
+                    g_d3d12_initialized = 1;
+                    g_d3d12_use_hw_render = 1;
+                    Log_Printf(L"MF: D3D12 hardware acceleration enabled");
+                } else {
+                    Log_Printf(L"MF: D3D12 processor init failed, falling back to software decoding");
+                    d3d12_video_cleanup();
+                }
             }
         } else {
             Log_Printf(L"MF: D3D12 device already initialized, reusing");
-        }
-
-        /* Initialize video processor for rendering */
-        if (d3d12_video_processor_init() == 0) {
             g_d3d12_initialized = 1;
             g_d3d12_use_hw_render = 1;
-            Log_Printf(L"MF: D3D12 hardware acceleration enabled");
-        } else {
-            Log_Printf(L"MF: D3D12 processor init failed, falling back to software decoding");
-            d3d12_video_cleanup();
         }
-        d3d12_failed:;
+#endif
     }
 
     /* Get native audio info before converting to PCM */
