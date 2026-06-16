@@ -26,7 +26,8 @@
 #define D3DFMT_NV12 ((D3DFORMAT)MAKEFOURCC('N','V','1','2'))
 #endif
 
-static IMFSourceReader     *g_reader     = NULL;
+static IMFSourceReader     *g_reader     = NULL;  /* Video reader (main thread only) */
+static IMFSourceReader     *g_audioReader = NULL; /* Audio reader (audio thread only) */
 static HWND                 g_hwnd       = NULL;
 static int                  g_active     = 0;
 static int                  g_dxva2      = 0;  /* 0=software, 1=DXVA2, 2=D3D11 */
@@ -80,11 +81,12 @@ static int                 g_audioBufIdx = 0;
 static HANDLE              g_hAudioThread = NULL;
 static volatile int        g_audioThreadStop = 0;
 
-/* Precomputed YUV→RGB tables */
-static int g_ytable[256];
-static int g_rvtable[256];
-static int g_guvtable[256];
-static int g_butable[256];
+/* Precomputed YUV→RGB tables (BT.601) */
+static int g_ytable[256];   /* 1.164 * (Y - 16) */
+static int g_rvtable[256];  /* 1.596 * (Cr - 128) */
+static int g_gutable[256];  /* 0.391 * (Cb - 128) */
+static int g_gvtable[256];  /* 0.813 * (Cr - 128) */
+static int g_butable[256];  /* 2.018 * (Cb - 128) */
 static int g_tables_init = 0;
 
 static void init_yuv_tables(void)
@@ -94,7 +96,8 @@ static void init_yuv_tables(void)
     for (i = 0; i < 256; i++) {
         g_ytable[i]   = (int)((i - 16) * 1.164);
         g_rvtable[i]  = (int)((i - 128) * 1.596);
-        g_guvtable[i] = (int)((i - 128) * 0.813);
+        g_gutable[i]  = (int)((i - 128) * 0.391);
+        g_gvtable[i]  = (int)((i - 128) * 0.813);
         g_butable[i]  = (int)((i - 128) * 2.018);
     }
     g_tables_init = 1;
@@ -167,6 +170,7 @@ static void mf_cleanup_internals(void)
         g_hAudioThread = NULL;
     }
 
+    if (g_audioReader) { IMFSourceReader_Release(g_audioReader); g_audioReader = NULL; }
     if (g_reader)    { IMFSourceReader_Release(g_reader); g_reader = NULL; }
 
     if (g_hWaveOut) {
@@ -288,13 +292,15 @@ static int mf_init_audio(int channels, int sample_rate, int bits_per_sample)
     return 0;
 }
 
-/* Audio thread: continuously reads audio from source and feeds waveOut */
+/* Audio thread: continuously reads audio from source and feeds waveOut.
+ * Uses a dedicated g_audioReader (separate from the video reader) so there
+ * is no thread-safety issue with the main thread's ReadSample calls. */
 static DWORD WINAPI mf_audio_thread(LPVOID param)
 {
     (void)param;
-    Log_Printf(L"MF Audio: thread starte");
+    Log_Printf(L"MF Audio: thread started");
 
-    while (!g_audioThreadStop && g_reader && g_active) {
+    while (!g_audioThreadStop && g_audioReader && g_active) {
         IMFMediaBuffer *abuf = NULL;
         IMFSample      *asample = NULL;
         BYTE           *adata = NULL;
@@ -313,8 +319,8 @@ static DWORD WINAPI mf_audio_thread(LPVOID param)
             continue;
         }
 
-        /* Read audio sample */
-        hr = IMFSourceReader_ReadSample(g_reader,
+        /* Read audio sample from dedicated audio reader */
+        hr = IMFSourceReader_ReadSample(g_audioReader,
             (DWORD)MF_SOURCE_READER_FIRST_AUDIO_STREAM,
             0, &astream_idx, &aflags, &ats, &asample);
 
@@ -603,27 +609,62 @@ int mf_open(const wchar_t *filepath, HWND hwnd_display, int enable_dxva2)
             mf_subtype_to_name(&audioSubtype, g_audioCodec, 64);
         if (SUCCEEDED(IMFMediaType_GetUINT32(atype, &MF_MT_AVG_BITRATE, &abitrate)))
             g_audioBitrate = abitrate;
-        Log_Printf(L"MF: Audio codec=%ls bitrate=%", g_audioCodec, g_audioBitrate);
+        Log_Printf(L"MF: Audio codec=%ls bitrate=%u", g_audioCodec, g_audioBitrate);
         IMFMediaType_Release(atype); atype = NULL;
     }
 
-    /* Configure audio output to PCM */
-    hr = MFCreateMediaType(&atype);
-    if (SUCCEEDED(hr)) {
-        IMFMediaType_SetGUID(atype, &MF_MT_MAJOR_TYPE, &MFMediaType_Audio);
-        IMFMediaType_SetGUID(atype, &MF_MT_SUBTYPE, &MFAudioFormat_PCM);
-        hr = IMFSourceReader_SetCurrentMediaType(g_reader, (DWORD)MF_SOURCE_READER_FIRST_AUDIO_STREAM, NULL, atype);
-        IMFMediaType_Release(atype); atype = NULL;
+    /* Create a SEPARATE source reader for audio.
+     * IMFSourceReader is not thread-safe, so the audio thread needs its own
+     * reader instance to avoid data races with the video thread. */
+    if (g_hasAudio) {
+        IMFAttributes *aattrs = NULL;
+        hr = MFCreateAttributes(&aattrs, 2);
+        if (SUCCEEDED(hr)) {
+            IMFAttributes_SetUINT32(aattrs, &MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, TRUE);
+            hr = MFCreateSourceReaderFromURL(filepath, aattrs, &g_audioReader);
+            IMFAttributes_Release(aattrs);
+        }
+        if (FAILED(hr)) {
+            Log_Printf(L"MF: Failed to create audio reader: 0x%08l", hr);
+            g_audioReader = NULL;
+        }
     }
-    hr = IMFSourceReader_GetCurrentMediaType(g_reader, (DWORD)MF_SOURCE_READER_FIRST_AUDIO_STREAM, &atype);
-    if (SUCCEEDED(hr)) {
-        IMFMediaType_GetUINT32(atype, &MF_MT_AUDIO_NUM_CHANNELS, &channels);
-        IMFMediaType_GetUINT32(atype, &MF_MT_AUDIO_SAMPLES_PER_SECOND, &samplerate);
-        IMFMediaType_GetUINT32(atype, &MF_MT_AUDIO_BITS_PER_SAMPLE, &bitspersample);
-        IMFMediaType_Release(atype); atype = NULL;
-        if (channels > 0 && samplerate > 0 && bitspersample > 0)
-            mf_init_audio(channels, samplerate, bitspersample);
+
+    /* Configure audio output to 16-bit PCM on the audio reader.
+     * AAC decoders output float by default; requesting 16-bit forces
+     * the source reader to insert a float→PCM16 conversion MFT. */
+    if (g_audioReader) {
+        hr = MFCreateMediaType(&atype);
+        if (SUCCEEDED(hr)) {
+            IMFMediaType_SetGUID(atype, &MF_MT_MAJOR_TYPE, &MFMediaType_Audio);
+            IMFMediaType_SetGUID(atype, &MF_MT_SUBTYPE, &MFAudioFormat_PCM);
+            IMFMediaType_SetUINT32(atype, &MF_MT_AUDIO_BITS_PER_SAMPLE, 16);
+            hr = IMFSourceReader_SetCurrentMediaType(g_audioReader, (DWORD)MF_SOURCE_READER_FIRST_AUDIO_STREAM, NULL, atype);
+            IMFMediaType_Release(atype); atype = NULL;
+        }
+        if (FAILED(hr)) {
+            /* Fallback without explicit bit depth */
+            hr = MFCreateMediaType(&atype);
+            if (SUCCEEDED(hr)) {
+                IMFMediaType_SetGUID(atype, &MF_MT_MAJOR_TYPE, &MFMediaType_Audio);
+                IMFMediaType_SetGUID(atype, &MF_MT_SUBTYPE, &MFAudioFormat_PCM);
+                hr = IMFSourceReader_SetCurrentMediaType(g_audioReader, (DWORD)MF_SOURCE_READER_FIRST_AUDIO_STREAM, NULL, atype);
+                IMFMediaType_Release(atype); atype = NULL;
+            }
+        }
+        hr = IMFSourceReader_GetCurrentMediaType(g_audioReader, (DWORD)MF_SOURCE_READER_FIRST_AUDIO_STREAM, &atype);
+        if (SUCCEEDED(hr)) {
+            IMFMediaType_GetUINT32(atype, &MF_MT_AUDIO_NUM_CHANNELS, &channels);
+            IMFMediaType_GetUINT32(atype, &MF_MT_AUDIO_SAMPLES_PER_SECOND, &samplerate);
+            IMFMediaType_GetUINT32(atype, &MF_MT_AUDIO_BITS_PER_SAMPLE, &bitspersample);
+            IMFMediaType_Release(atype); atype = NULL;
+            if (channels > 0 && samplerate > 0 && bitspersample > 0)
+                mf_init_audio(channels, samplerate, bitspersample);
+        }
     }
+
+    /* Disable audio on the video reader - we use g_audioReader for audio */
+    IMFSourceReader_SetStreamSelection(g_reader, (DWORD)MF_SOURCE_READER_FIRST_AUDIO_STREAM, FALSE);
 
     /* Get duration */
     PropVariantInit(&var);
@@ -684,7 +725,7 @@ static void nv12_to_rgb32(BYTE *dst, int dst_stride, BYTE *src, int src_stride,
             }
 
             r = y_val + g_rvtable[cr];
-            g = y_val - g_guvtable[cb] - (int)((cr - 128) * 0.391);
+            g = y_val - g_gutable[cb] - g_gvtable[cr];
             b = y_val + g_butable[cb];
 
             pixel = &dst_row[dx * 4];
@@ -720,7 +761,7 @@ static void yuy2_to_rgb32(BYTE *dst, int dst_stride, BYTE *src, int src_stride,
                 cr = s[3];
             }
             r = y_val + g_rvtable[cr];
-            g = y_val - g_guvtable[cb] - (int)((cr - 128) * 0.391);
+            g = y_val - g_gutable[cb] - g_gvtable[cr];
             b = y_val + g_butable[cb];
 
             pixel = &dst_row[dx * 4];
@@ -930,8 +971,8 @@ int mf_render_next_frame(void)
         if (g_d3d11_texture) {
             /* Upload NV12 data to D3D11 texture */
             if (d3d11_video_upload_texture(g_d3d11_texture, data, g_stride, DXGI_FORMAT_NV12) == 0) {
-                /* Use video processor to render */
-                d3d11_video_processor_render(g_d3d11_texture, NULL, NULL);
+                /* Use video processor to render, centered with aspect ratio */
+                d3d11_video_processor_render(g_d3d11_texture, NULL, NULL, g_width, g_height);
             } else {
                 /* Fallback to software rendering */
                 mf_render_frame(data, g_stride, g_width, g_height, g_hwnd);

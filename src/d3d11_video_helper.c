@@ -543,12 +543,45 @@ int d3d11_video_processor_init(void)
 }
 
 int d3d11_video_processor_render(ID3D11Texture2D *src_texture,
-                                 const RECT *src_rect, const RECT *dst_rect)
+                                 const RECT *src_rect, const RECT *dst_rect,
+                                 int video_w, int video_h)
 {
     HRESULT hr;
+    RECT centered_src, centered_dst;
 
     if (!pVideoProcessor || !pVideoContext || !src_texture || !pRenderTargetView)
         return -1;
+
+    /* Calculate centered destination rect with aspect ratio preservation */
+    if (!dst_rect && video_w > 0 && video_h > 0 && g_width > 0 && g_height > 0) {
+        float scale_x = (float)g_width / (float)video_w;
+        float scale_y = (float)g_height / (float)video_h;
+        float scale = (scale_x < scale_y) ? scale_x : scale_y;
+        int draw_w = (int)(video_w * scale);
+        int draw_h = (int)(video_h * scale);
+        if (draw_w < 1) draw_w = 1;
+        if (draw_h < 1) draw_h = 1;
+        centered_dst.left   = (g_width - draw_w) / 2;
+        centered_dst.top    = (g_height - draw_h) / 2;
+        centered_dst.right  = centered_dst.left + draw_w;
+        centered_dst.bottom = centered_dst.top + draw_h;
+        dst_rect = &centered_dst;
+    }
+
+    /* Set source rect (full video frame) */
+    if (!src_rect && video_w > 0 && video_h > 0) {
+        centered_src.left = 0;
+        centered_src.top = 0;
+        centered_src.right = video_w;
+        centered_src.bottom = video_h;
+        src_rect = &centered_src;
+    }
+
+    /* Clear render target to black for letterboxing/pillarboxing */
+    {
+        float black[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+        ID3D11DeviceContext_ClearRenderTargetView(pD3D11Context, pRenderTargetView, black);
+    }
 
     /* Create input view from source texture */
     D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC inputDesc;
@@ -589,6 +622,16 @@ int d3d11_video_processor_render(ID3D11Texture2D *src_texture,
         Log_Printf(L"D3D11: CreateVideoProcessorOutputView failed: 0x%08l", hr);
         SAFE_RELEASE(inputView);
         return -1;
+    }
+
+    /* Set source and destination rectangles */
+    if (src_rect) {
+        ID3D11VideoContext_VideoProcessorSetStreamSourceRect(pVideoContext,
+            pVideoProcessor, 0, TRUE, src_rect);
+    }
+    if (dst_rect) {
+        ID3D11VideoContext_VideoProcessorSetStreamDestRect(pVideoContext,
+            pVideoProcessor, 0, TRUE, dst_rect);
     }
 
     /* Process video */

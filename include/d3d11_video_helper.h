@@ -72,10 +72,12 @@ int d3d11_video_processor_init(void);
 /* Process and render a video texture to the render target.
  * src_texture: source video texture (decoded frame)
  * src_rect: source rectangle (NULL for full frame)
- * dst_rect: destination rectangle (NULL for full render target)
+ * dst_rect: destination rectangle (NULL = auto center with aspect ratio)
+ * video_w, video_h: source video dimensions for aspect ratio calculation
  * Returns 0 on success, non-zero on failure. */
 int d3d11_video_processor_render(ID3D11Texture2D *src_texture,
-                                 const RECT *src_rect, const RECT *dst_rect);
+                                 const RECT *src_rect, const RECT *dst_rect,
+                                 int video_w, int video_h);
 
 /* Cleanup D3D11 video processor */
 void d3d11_video_processor_cleanup(void);
