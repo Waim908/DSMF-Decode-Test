@@ -10,6 +10,8 @@
 
 > 注意！此软件不能保证 100% 反映系统的实际解码效果。目前可安装的主流解码器都只能注册到 DirectShow，因此对于 MF 框架的播放效果，你可以看到相当拉胯的表现（对于不支持的格式）。解码器也不是绝对万能的。
 
+> 此软件的mf部分在windows上运行效果极差（未完善，能力有限），这里强烈推荐windows用户使用[mrfearless/MediaPlayer](https://github.com/mrfearless/MediaPlayer)作为替代，这是通过汇编编写的播放器，使用BSD宽松协议进行开源，对于linux/unix用户而言，wine的mf框架与gstreamer框架深度绑定，因此大部分可以正常解码和播放视频，目前wine无法正常运行*MediaPlayer*。
+
 对于 Wine，大多数视频与音频会交给 GStreamer 框架进行处理。只要你 GStreamer 插件集合足够完整，对于 WMV 这种特殊格式，Wine 可以直接绕过 GStreamer 完成解码。WMV 视频在 Wine 和 Windows DirectShow 中的表现都相当不错。
 
 ![DSMF](dsmf.png)
