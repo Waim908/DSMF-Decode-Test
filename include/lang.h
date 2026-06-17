@@ -5,8 +5,8 @@
 
 /* Application version */
 #define APP_VERSION_MAJOR 0
-#define APP_VERSION_MINOR 2
-#define APP_VERSION_STRING L"0.2"
+#define APP_VERSION_MINOR 3
+#define APP_VERSION_STRING L"0.3"
 
 /* Language string structure */
 typedef struct {
