@@ -24,13 +24,13 @@
 
 ## 禁用gstreamer的两种方法
 
-- 方法1：行数库禁用
+- 方法1：函数库禁用
 
 ```bash
 export WINEDLLOVERRIDE="winegstreamer=d"
 ```
 
-或
+或通过wincfg图形化，在函数库禁用*winegstreamer*
 
 ![wincfg](winecfg.png)
 
