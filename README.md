@@ -22,17 +22,21 @@
 
 ![setting](set.png)
 
-## 为什么我在 Wine 安装的第三方解码器（如 K-Lite）完全没有任何作用？通过设置 `winegstreamer.dll` 为禁用也不行？
+## 禁用gstreamer的两种方法
 
-首先，必须否定在 Wine 或模拟器社区广为流传的方法（最初在 mobox 中见过）：
+- 方法1：行数库禁用
 
 ```bash
-WINEDLLOVERRIDE="winegstreamer=d"
+export WINEDLLOVERRIDE="winegstreamer=d"
 ```
 
-此方法是无效的。如果你实际通过 `winecfg` 设置过，就会发现 `winegstreamer` 压根不存在于索引中，因此此方法根本没有禁用 GStreamer。
+或则
 
-![Screenshot](winecfg.png)
+！[wincfg](winecfg.png)
+
+此方法可以禁用gstreamer但是也会导致mf框架无法调用gstreamer
+
+- 方法2：CLSID删除gstreamer注册表（只影响DirectShow）可以在安装第三方解码器的情况下自由切换是否使用gstreamer
 
 准确来讲，同样是注册的 DirectShow 解码器，在 Wine 里 GStreamer 本质上也是通过 CLSID 注册调用的，且优先级最高，直接顶掉了第三方解码器注册的 CLSID。
 
