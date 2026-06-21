@@ -30,9 +30,9 @@
 export WINEDLLOVERRIDE="winegstreamer=d"
 ```
 
-或则
+或
 
-！[wincfg](winecfg.png)
+![wincfg](winecfg.png)
 
 此方法可以禁用gstreamer但是也会导致mf框架无法调用gstreamer
 
